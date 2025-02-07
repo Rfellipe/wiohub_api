@@ -1,16 +1,28 @@
 use super::models::{Data, Device};
-use super::utils::DeviceControllerQueries;
+use super::utils::{DeviceControllerQueries, ApiDeviceDataResponse};
 use super::{BsonRejection, MongoRejection};
 use bson::oid::ObjectId;
 use chrono::{DateTime, FixedOffset, Utc};
 use futures::TryStreamExt;
-use mongodb::{
-    bson::{doc, Document},
-};
+use mongodb::bson::{doc, Document};
 use mongodb::{Collection, Database};
 use std::convert::Infallible;
+use utoipa::{ Modify, OpenApi };
 
-pub async fn device_controller(
+#[derive(OpenApi)]
+#[openapi(paths(device_data_handler))]
+pub struct WiohubApi;
+
+
+#[utoipa::path(
+        get,
+        path = "devices/data",
+        params(DeviceControllerQueries),
+        responses(
+            (status = 200, description = "Devices datas received", body = [ApiDeviceDataResponse])
+        )
+    )]
+pub async fn device_data_handler(
     opts: DeviceControllerQueries,
     db: Database,
 ) -> Result<impl warp::Reply, warp::Rejection> {
@@ -21,14 +33,6 @@ pub async fn device_controller(
 
     let start_utc: DateTime<Utc> = start_dt.with_timezone(&Utc);
     let end_utc: DateTime<Utc> = end_dt.with_timezone(&Utc);
-
-    // let target_offset = FixedOffset::east(3 * 3600);
-
-    // let start_target = start_utc.with_timezone(&target_offset);
-    // let end_target = end_utc.with_timezone(&target_offset);
-
-    // let start_res = start_target.to_rfc3339();
-    // let end_res = end_target.to_rfc3339();
 
     let client_id = ObjectId::parse_str("6707040fe35f054bd65e5d73")
         .map_err(|e| warp::reject::custom(BsonRejection(e)))?;
@@ -55,50 +59,143 @@ pub async fn device_controller(
         .collect::<Vec<_>>();
 
     // Fetch data for the devices within the time range and group by 10-minute intervals
-    let pipeline = vec![
+    let pipeline = [
         doc! {
-            "$match": {
-                "deviceId": { "$in": devices_id },
-                "timestamp": {
+            "$match": doc! {
+                "deviceId": doc! { "$in": devices_id },
+                "timestamp": doc! {
                     "$gte": start_utc,
                     "$lte": end_utc,
                 },
-            },
+            }
         },
         doc! {
-            "$group": {
-                "_id": {
+            "$lookup": doc! {
+                "from": "Device",
+                "localField": "deviceId",
+                "foreignField": "_id",
+                "as": "device"
+            }
+        },
+        doc! {
+            "$unwind": doc! {
+                "path": "$device"
+            }
+        },
+        doc! {
+            "$group": doc! {
+                "_id": doc! {
                     "deviceId": "$deviceId",
-                    "interval": {
-                        "$dateToString": {
+                    "timestamp": doc! {
+                        "$dateToString": doc! {
                             "format": "%Y-%m-%dT%H:%M:00",
-                            "date": {
-                                "$dateTrunc": {
+                            "date": doc! {
+                                "$dateTrunc": doc! {
                                     "date": "$timestamp",
                                     "unit": "minute",
                                     "binSize": 10,
                                 },
                             },
                         },
-                    },
-                    "sensorType": "$sensorType", 
+                    }
                 },
-                "averageValue": { "$avg": "$value" }, 
-                "maxValue": {"$max": "$value"},
-                "minValue": {"$min": "$value"},
-                // "data": {
-                //     "$push": {
-                //         "timestamp": "$timestamp",
-                //         "sensorType": "$sensorType",
-                //         "value": "$value",
-                //     },
-                // },
-            },
+                "data": doc! {
+                    "$push": doc! {
+                        "sensorType": "$sensorType",
+                        "value": "$value"
+                    }
+                },
+                "device": doc! {
+                    "$first": "$device"
+                }
+            }
         },
         doc! {
-            "$sort": {
-                "timestamp": 1,
-            },
+            "$sort": doc! {
+                "_id.timestamp": 1
+            }
+        },
+        doc! {
+            "$project": doc! {
+                "_id": 0,
+                "name": "$device.name",
+                "online": doc! {
+                    "$literal": true
+                },
+                "status": "$device.status",
+                "type": "$device.type",
+                "serial": "$device.serial",
+                "settings": doc! {
+                    "timezone": "America/Sao_Paulo",
+                    "tminterval": "10"
+                },
+                "location": "$device.point",
+                "data": doc! {
+                    "$map": doc! {
+                        "input": [
+                            "$_id.timestamp"
+                        ],
+                        "as": "timestamp",
+                        "in": doc! {
+                            "timestamp": "$$timestamp",
+                            "sensors": doc! {
+                                "$arrayToObject": doc! {
+                                    "$map": doc! {
+                                        "input": "$data",
+                                        "as": "sensor",
+                                        "in": doc! {
+                                            "k": "$$sensor.sensorType",
+                                            "v": doc! {
+                                                "unit": "$$sensor.unit",
+                                                "values": doc! {
+                                                    "min": doc! {
+                                                        "$min": "$$sensor.value"
+                                                    },
+                                                    "max": doc! {
+                                                        "$max": "$$sensor.value"
+                                                    },
+                                                    "average": doc! {
+                                                        "$avg": "$$sensor.value"
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        doc! {
+            "$group": doc! {
+                "_id": "$name",
+                "name": doc! {
+                    "$first": "$name"
+                },
+                "online": doc! {
+                    "$first": "$online"
+                },
+                "status": doc! {
+                    "$first": "$status"
+                },
+                "type": doc! {
+                    "$first": "$type"
+                },
+                "serial": doc! {
+                    "$first": "$serial"
+                },
+                "settings": doc! {
+                    "$first": "$settings"
+                },
+                "location": doc! {
+                    "$first": "$location"
+                },
+                "data": doc! {
+                    "$push": "$data"
+                }
+            }
         },
     ];
 
@@ -113,10 +210,7 @@ pub async fn device_controller(
     Ok(warp::reply::json(&all_data))
 }
 
-pub async fn hello_handler(
-    s: String,
-    _db: mongodb::Database,
-) -> Result<impl warp::Reply, Infallible> {
+pub async fn hello_handler(s: String) -> Result<impl warp::Reply, Infallible> {
     println!("update_todo: id={}", s);
 
     Ok(warp::http::StatusCode::OK)

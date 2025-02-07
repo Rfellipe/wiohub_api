@@ -16,4 +16,5 @@ serde_json = "1.0"
 mongodb = "2.1"
 futures = "0.3"
 serde_qs = "0.12"
-
+utoipa = { version = "^5", features = ["uuid", "chrono"] }
+utoipa-swagger-ui = { version = "^9", features = ["debug-embed", "reqwest", "actix-web"] }
