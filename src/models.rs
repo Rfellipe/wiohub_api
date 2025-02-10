@@ -8,10 +8,14 @@ pub struct Client {
     #[serde(rename = "_id")]
     pub id: ObjectId,
     pub name: String,
+    #[serde(rename = "tenantId")]
     pub tenant_id: ObjectId,
+    #[serde(rename = "createdAt")]
     pub created_at: DateTime<Utc>,
+    #[serde(rename = "updatedAt")]
     pub updated_at: DateTime<Utc>,
     pub ftp: Option<Ftp>,
+    #[serde(rename = "ftpId")]
     pub ftp_id: Option<ObjectId>,
     pub locations: Vec<Location>,
     pub workspaces: Vec<Workspace>,
@@ -200,32 +204,44 @@ pub struct User {
     pub email: String,
     pub phone: String,
     pub password: String,
-    pub client: Client,
-    pub client_id: ObjectId,
-    pub is_pending: bool,
-    pub role: Role,
-    pub tenant_id: ObjectId,
-    pub failed_login_attempts: i32,
+    pub client: Option<Client>,
+    pub client_id: Option<ObjectId>,
+    #[serde(rename = "isPending")]
+    pub is_pending: Option<bool>,
+    pub role: Option<Role>,
+    #[serde(rename = "tenantId")]
+    pub tenant_id: Option<String>,
+    #[serde(rename = "failedLoginAttempts")]
+    pub failed_login_attempts: Option<i32>,
+    #[serde(rename = "lockUntil")]
     pub lock_until: Option<DateTime<Utc>>,
-    pub is_locked: bool,
-    pub refresh_token: Vec<RefreshToken>,
-    pub logs: Vec<Log>,
-    pub notes: Vec<Note>,
-    pub notifications: Vec<Notification>,
-    pub api_keys: Vec<ApiKey>,
-    pub software_update: Vec<SoftwareUpdate>,
-    pub file_uploads: Vec<FileUpload>,
-    pub workspaces: Vec<Workspace>,
-    pub workspaces_id: Vec<String>,
-    pub created_at: DateTime<Utc>,
-    pub updated_at: DateTime<Utc>,
+    #[serde(rename = "isLocked")]
+    pub is_locked: Option<bool>,
+    #[serde(rename = "refreshToken")]
+    pub refresh_token: Option<Vec<RefreshToken>>,
+    pub logs: Option<Vec<Log>>,
+    pub notes: Option<Vec<Note>>,
+    pub notifications: Option<Vec<Notification>>,
+    #[serde(rename = "apiKeys")]
+    pub api_keys: Option<Vec<ApiKey>>,
+    #[serde(rename = "softwareUpdate")]
+    pub software_update: Option<Vec<SoftwareUpdate>>,
+    #[serde(rename = "fileUploads")]
+    pub file_uploads: Option<Vec<FileUpload>>,
+    pub workspaces: Option<Vec<Workspace>>,
+    #[serde(rename = "workspacecsId")]
+    pub workspaces_id: Option<Vec<String>>,
+    #[serde(rename = "createdAt")]
+    pub created_at: Option<DateTime<Utc>>,
+    #[serde(rename = "updatedAt")]
+    pub updated_at: Option<DateTime<Utc>>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub enum Role {
-    Admin,
-    Operator,
-    Viewer,
+    ADMIN,
+    OPERATOR,
+    VIEWER,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]

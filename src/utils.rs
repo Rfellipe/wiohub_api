@@ -8,6 +8,13 @@ pub struct DeviceControllerQueries {
     pub end: String,
 }
 
+// Body on auth/signin route
+#[derive(Debug, Serialize, Deserialize)]
+pub struct SinginBody {
+    pub email: String,
+    pub password: String
+}
+
 // Response for /devices/data route
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct ApiDeviceDataResponse {

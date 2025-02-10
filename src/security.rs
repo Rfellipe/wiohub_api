@@ -1,0 +1,37 @@
+use jsonwebtoken::{encode, EncodingKey, Header};
+use serde::{Deserialize, Serialize};
+use std::time::{SystemTime, UNIX_EPOCH};
+
+#[derive(Debug, Serialize, Deserialize)]
+struct Claims {
+    id: String,
+    tenant: String,
+    exp: usize, // Expiration timestamp in seconds
+}
+
+pub fn generate_jwt(
+    user_id: &str,
+    tenant_id: &str,
+    secret: &str,
+    expires_in: u64,
+) -> Result<String, jsonwebtoken::errors::Error> {
+    let expiration = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("Time went backwards")
+        .as_secs()
+        + expires_in;
+
+    let claims = Claims {
+        id: user_id.to_string(),
+        tenant: tenant_id.to_string(),
+        exp: expiration as usize,
+    };
+
+    let token = encode(
+        &Header::default(),
+        &claims,
+        &EncodingKey::from_secret(secret.as_ref()),
+    )?;
+
+    Ok(token)
+}

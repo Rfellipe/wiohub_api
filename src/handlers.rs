@@ -1,18 +1,24 @@
-use super::models::{Data, Device};
-use super::utils::{DeviceControllerQueries, ApiDeviceDataResponse};
-use super::{BsonRejection, MongoRejection};
+use super::errors::{BsonRejection, HashRejection, MongoRejection, SignInError};
+use super::models::{Data, Device, User};
+use super::security::generate_jwt;
+use super::utils::{ApiDeviceDataResponse, DeviceControllerQueries, SinginBody};
+use argon2::{
+    password_hash::{rand_core::OsRng, PasswordHash, PasswordHasher, PasswordVerifier, SaltString},
+    Argon2,
+};
 use bson::oid::ObjectId;
 use chrono::{DateTime, FixedOffset, Utc};
 use futures::TryStreamExt;
 use mongodb::bson::{doc, Document};
+use mongodb::options::{FindOneOptions, FindOptions};
 use mongodb::{Collection, Database};
 use std::convert::Infallible;
-use utoipa::{ Modify, OpenApi };
+use utoipa::OpenApi;
+use warp::http::Response;
 
 #[derive(OpenApi)]
 #[openapi(paths(device_data_handler))]
 pub struct WiohubApi;
-
 
 #[utoipa::path(
         get,
@@ -208,6 +214,65 @@ pub async fn device_data_handler(
         .map_err(|e| warp::reject::custom(MongoRejection(e)))?;
 
     Ok(warp::reply::json(&all_data))
+}
+
+pub async fn auth_signin_handler(
+    // rateLimitInfo: RateLimitInfo,
+    body: SinginBody,
+    db: Database,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    let user_coll: Collection<User> = db.collection("User");
+    let find_options = FindOneOptions::builder()
+        .projection(doc! { 
+            "name": 1,
+            "email": 1,
+            "phone": 1,
+            "password": 1,
+            "role": 1, 
+            "tenantId": 1
+        }).build();
+
+    let user = user_coll
+        .find_one(
+            doc! {
+                "email": body.email
+            },
+            find_options,
+        )
+        .await
+        .map_err(|e| warp::reject::custom(MongoRejection(e)))?
+        .ok_or_else(|| warp::reject::custom(SignInError))?;
+
+    println!("{:#?}", user);
+
+    let password = user.clone().password;
+    let id = user.clone().id;
+    let tenant_id = user.tenant_id.ok_or_else(|| warp::reject::not_found())?;
+
+    let parsed_hash =
+        PasswordHash::new(&password).map_err(|e| warp::reject::custom(HashRejection(e)))?;
+
+    let password_match = Argon2::default()
+        .verify_password(body.password.as_bytes(), &parsed_hash)
+        .is_ok();
+
+    if !password_match {
+        return Err(warp::reject::custom(SignInError));
+    }
+
+    match generate_jwt(
+        &id.to_string(),
+        &tenant_id.to_string(),
+        "wiohub-secret",
+        3600,
+    ) {
+        Ok(token) => {
+            return Ok(Response::builder()
+                .status(warp::http::StatusCode::OK)
+                .body(token))
+        }
+        Err(_e) => Err(warp::reject::reject()),
+    }
 }
 
 pub async fn hello_handler(s: String) -> Result<impl warp::Reply, Infallible> {
