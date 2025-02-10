@@ -7,21 +7,21 @@ use bson::oid::ObjectId;
 pub struct Client {
     #[serde(rename = "_id")]
     pub id: ObjectId,
-    pub name: String,
+    pub name: Option<String>,
     #[serde(rename = "tenantId")]
-    pub tenant_id: ObjectId,
+    pub tenant_id: Option<String>,
     #[serde(rename = "createdAt")]
-    pub created_at: DateTime<Utc>,
+    pub created_at: Option<DateTime<Utc>>,
     #[serde(rename = "updatedAt")]
-    pub updated_at: DateTime<Utc>,
+    pub updated_at: Option<DateTime<Utc>>,
     pub ftp: Option<Ftp>,
     #[serde(rename = "ftpId")]
     pub ftp_id: Option<ObjectId>,
-    pub locations: Vec<Location>,
-    pub workspaces: Vec<Workspace>,
-    pub users: Vec<User>,
-    pub extensions: Vec<Extensions>,
-    pub devices: Vec<Device>,
+    pub locations: Option<Vec<Location>>,
+    pub workspaces: Option<Vec<Workspace>>,
+    pub users: Option<Vec<User>>,
+    pub extensions: Option<Vec<Extensions>>,
+    pub devices: Option<Vec<Device>>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]

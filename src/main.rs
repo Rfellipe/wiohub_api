@@ -7,7 +7,6 @@ mod utils;
 mod security;
 
 use db::get_db;
-use errors::{BsonRejection, MongoRejection};
 // use routes::all_routes;
 use utoipa::OpenApi;
 use warp::{self, Filter};
@@ -19,7 +18,7 @@ async fn main() -> mongodb::error::Result<()> {
     let db = get_db().await?;
 
     // 60 request per 60 seconds
-    let public_routes_rate_limit = RateLimitConfig::default();
+    let public_routes_rate_limit = RateLimitConfig::max_per_window(5, 5 * 60);
 
     let root = warp::path::end().map(|| "Welcome to the Wiohub api");
 
@@ -36,13 +35,14 @@ async fn main() -> mongodb::error::Result<()> {
 
     let device_controller_route = warp::path!("devices" / "data")
         .and(warp::get())
+        .and(warp::header::header("authorization"))
         .and(warp::query::<utils::DeviceControllerQueries>())
         .and(with_db(db.clone()))
         .and_then(handlers::device_data_handler);
 
     let signin_route = warp::path!("auth" / "signin")
         .and(warp::post())
-        // .and(with_rate_limit(public_routes_rate_limit.clone()))
+        .and(with_rate_limit(public_routes_rate_limit.clone()))
         .and(warp::body::json())
         .and(with_db(db.clone()))
         .and_then(handlers::auth_signin_handler);
@@ -53,13 +53,6 @@ async fn main() -> mongodb::error::Result<()> {
         .or(device_controller_route)
         .or(signin_route)
         .recover(errors::handle_rejection);
-
-    // let api = api_doc.or(swagger_ui);
-
-    // let routes = api
-    //     .or(all_routes(db))
-    //     .with(warp::log("devices"))
-    //     .recover(errors::handle_rejection);
 
     warp::serve(routes).run(([127, 0, 0, 1], 3030)).await;
 
