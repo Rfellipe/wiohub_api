@@ -2,6 +2,8 @@ use jsonwebtoken::{decode, encode, DecodingKey, EncodingKey, Header, Validation}
 use serde::{Deserialize, Serialize};
 use std::time::{SystemTime, UNIX_EPOCH};
 
+pub static JWT_SECRET: &'static str = "wiohub-secret";
+
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Claims {
     pub id: String,
@@ -36,7 +38,9 @@ pub fn generate_jwt(
     Ok(token)
 }
 
-pub fn decode_jwt(token: &str, secret: &str) -> Result<Claims, jsonwebtoken::errors::Error> {
+pub fn decode_jwt(authorization: String, secret: &str) -> Result<Claims, jsonwebtoken::errors::Error> {
+    let token = authorization.trim_start_matches("Bearer ");
+
     let decoding_key = DecodingKey::from_secret(secret.as_ref());
     let decoded = decode::<Claims>(token, &decoding_key, &Validation::default())?;
 

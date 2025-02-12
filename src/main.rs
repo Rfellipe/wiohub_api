@@ -4,7 +4,16 @@ mod handlers;
 mod models;
 mod swagger;
 mod utils;
-mod security;
+// mod security;
+
+use crate::handlers::{
+    device_handlers::{
+        device_data::device_data_handler,
+        device_status::device_status_handler
+    },
+    auth_handlers::auth::auth_signin_handler
+};
+use utils::utils_models;
 
 use db::get_db;
 // use routes::all_routes;
@@ -36,22 +45,31 @@ async fn main() -> mongodb::error::Result<()> {
     let device_controller_route = warp::path!("devices" / "data")
         .and(warp::get())
         .and(warp::header::header("authorization"))
-        .and(warp::query::<utils::DeviceControllerQueries>())
+        .and(warp::query::<utils_models::DeviceControllerQueries>())
         .and(with_db(db.clone()))
-        .and_then(handlers::device_data_handler);
+        .and_then(device_data_handler);
+
+    let devices_status_route = warp::path!("devices" / "status")
+        .and(warp::get())
+        .and(warp::header::header("authorization"))
+        .and(warp::query::<utils_models::DeviceStatusQueries>())
+        .and(with_db(db.clone()))
+        .and_then(device_status_handler);
+        
 
     let signin_route = warp::path!("auth" / "signin")
         .and(warp::post())
         .and(with_rate_limit(public_routes_rate_limit.clone()))
         .and(warp::body::json())
         .and(with_db(db.clone()))
-        .and_then(handlers::auth_signin_handler);
+        .and_then(auth_signin_handler);
 
     let routes = root
         .or(api_doc)
         .or(swagger_ui)
-        .or(device_controller_route)
         .or(signin_route)
+        .or(device_controller_route)
+        .or(devices_status_route)
         .recover(errors::handle_rejection);
 
     warp::serve(routes).run(([127, 0, 0, 1], 3030)).await;

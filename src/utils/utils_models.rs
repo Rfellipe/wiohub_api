@@ -8,11 +8,24 @@ pub struct DeviceControllerQueries {
     pub end: String,
 }
 
+// Query for devices/status route
+#[derive(Debug, Serialize, Deserialize, IntoParams)]
+pub struct DeviceStatusQueries {
+    pub serial: Option<String>
+}
+
 // Body on auth/signin route
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, IntoParams)]
 pub struct SinginBody {
     pub email: String,
     pub password: String
+}
+
+// Custom message to return in routes when needed
+#[derive(serde::Serialize, utoipa::ToSchema)]
+pub struct CustomMessage {
+    pub message: String,
+    pub code: u16,
 }
 
 // Response for /devices/data route
@@ -60,3 +73,4 @@ pub struct MinMaxAvg {
     pub max: Option<f64>,
     pub average: Option<f64>,
 }
+

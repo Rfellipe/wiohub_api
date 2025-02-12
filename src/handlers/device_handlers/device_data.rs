@@ -1,53 +1,47 @@
-use super::errors::{AuthError, HashRejection, MongoRejection, SignInError};
-use super::models::{Client, Data, Device, User};
-use super::security::{decode_jwt, generate_jwt};
-use super::utils::{ApiDeviceDataResponse, DeviceControllerQueries, SinginBody};
-use argon2::{
-    password_hash::{PasswordHash, PasswordVerifier},
-    Argon2,
+use crate::errors::{AuthError, MongoRejection};
+use crate::handlers::auth_handlers::security::{decode_jwt, JWT_SECRET};
+use crate::models::{Client, Data, Device};
+use crate::utils::{
+    utils_functions::handle_time_interval,
+    utils_models::{ApiDeviceDataResponse, CustomMessage, DeviceControllerQueries},
 };
-use chrono::{DateTime, FixedOffset, Utc};
 use futures::TryStreamExt;
 use mongodb::bson::{doc, Document};
 use mongodb::options::FindOneOptions;
 use mongodb::{Collection, Database};
-use utoipa::OpenApi;
-use warp::http::Response;
-use warp::reply::Reply;
-use warp_rate_limit::{add_rate_limit_headers, RateLimitInfo};
-
-static JWT_SECRET: &'static str = "wiohub-secret";
-
-#[derive(OpenApi)]
-#[openapi(paths(device_data_handler))]
-pub struct WiohubApi;
 
 #[utoipa::path(
         get,
         path = "devices/data",
         params(DeviceControllerQueries),
         responses(
-            (status = 200, description = "Devices datas received", body = [ApiDeviceDataResponse])
+            (status = 200, description = "Devices datas received", body = [ApiDeviceDataResponse]),
+            (status = 400, description = "Dates parse error", body = [CustomMessage]),
+            (status = 403, description = "Authorization token invalid or expired", body = String),
+            (status = 500, description = "Internal Server Error", body = String),
         )
-    )]
+    )
+]
 pub async fn device_data_handler(
     authorization: String,
     opts: DeviceControllerQueries,
     db: Database,
 ) -> Result<impl warp::Reply, warp::Rejection> {
-    let token = authorization.trim_start_matches("Bearer ").to_owned();
     let user_info =
-        decode_jwt(&token, &JWT_SECRET).map_err(|_e| warp::reject::custom(AuthError))?;
+        decode_jwt(authorization, &JWT_SECRET).map_err(|_e| warp::reject::custom(AuthError))?;
 
-    println!("{:#?}", user_info);
+    let (start, end) = match handle_time_interval(opts) {
+        Ok(values) => values,
+        Err(err) => {
+            let response = CustomMessage {
+                message: err.to_string(),
+                code: warp::http::StatusCode::BAD_REQUEST.as_u16(),
+            };
 
-    let start_dt: DateTime<FixedOffset> =
-        DateTime::parse_from_rfc3339(&opts.start).expect("Failed to parse start string");
-    let end_dt: DateTime<FixedOffset> =
-        DateTime::parse_from_rfc3339(&opts.end).expect("Failed to parse end string");
+            return Ok(warp::reply::json(&response));
+        }
+    };
 
-    let start_utc: DateTime<Utc> = start_dt.with_timezone(&Utc);
-    let end_utc: DateTime<Utc> = end_dt.with_timezone(&Utc);
     let find_options = FindOneOptions::builder()
         .projection(doc! {
             "id": 1
@@ -93,8 +87,8 @@ pub async fn device_data_handler(
             "$match": doc! {
                 "deviceId": doc! { "$in": devices_id },
                 "timestamp": doc! {
-                    "$gte": start_utc,
-                    "$lte": end_utc,
+                    "$gte": start,
+                    "$lte": end,
                 },
             }
         },
@@ -237,59 +231,4 @@ pub async fn device_data_handler(
         .map_err(|e| warp::reject::custom(MongoRejection(e)))?;
 
     Ok(warp::reply::json(&all_data))
-}
-
-pub async fn auth_signin_handler(
-    rate_limit_info: RateLimitInfo,
-    body: SinginBody,
-    db: Database,
-) -> Result<impl warp::Reply, warp::Rejection> {
-    let user_coll: Collection<User> = db.collection("User");
-    let user = user_coll
-        .find_one(
-            doc! {
-                "email": body.email
-            },
-            FindOneOptions::builder()
-                .projection(doc! {
-                    "name": 1,
-                    "email": 1,
-                    "phone": 1,
-                    "password": 1,
-                    "role": 1,
-                    "tenantId": 1
-                })
-                .build(),
-        )
-        .await
-        .map_err(|e| warp::reject::custom(MongoRejection(e)))?
-        .ok_or_else(|| warp::reject::custom(SignInError))?;
-
-
-    let password = user.clone().password;
-    let id = user.clone().id;
-    let tenant_id = user.tenant_id.ok_or_else(|| warp::reject::not_found())?;
-
-    let parsed_hash =
-        PasswordHash::new(&password).map_err(|e| warp::reject::custom(HashRejection(e)))?;
-
-    let password_match = Argon2::default()
-        .verify_password(body.password.as_bytes(), &parsed_hash)
-        .is_ok();
-
-    if !password_match {
-        return Err(warp::reject::custom(SignInError));
-    }
-
-    match generate_jwt(&id.to_string(), &tenant_id.to_string(), JWT_SECRET, 3600) {
-        Ok(token) => {
-            let mut response = warp::reply::with_status(
-                token,
-                warp::http::StatusCode::OK
-            ).into_response();
-            let _ = add_rate_limit_headers(response.headers_mut(), &rate_limit_info);
-            return Ok(response)
-        }
-        Err(_e) => Err(warp::reject::reject()),
-    }
 }
