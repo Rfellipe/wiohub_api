@@ -16,7 +16,7 @@ use crate::handlers::{
     auth_handlers::auth::auth_signin_handler,
     device_handlers::{device_data::devices_data_handler, device_status::device_status_handler},
 };
-use handlers::device_handlers::device_data::device_data_handler;
+use handlers::{auth_handlers::session::with_auth_cookie, device_handlers::device_data::device_data_handler};
 use utils::utils_functions::send_to_zabbix;
 use utils::utils_models;
 
@@ -51,23 +51,26 @@ async fn main() -> mongodb::error::Result<()> {
         .and(warp::get())
         .map(|| warp::reply::with_status("Pong", warp::http::StatusCode::OK));
 
-    let device_controller_route = warp::path!("devices" / "data" / String)
+    let device_controller_route = warp::path!("device" / "data" / String)
         .and(warp::get())
-        .and(warp::header::header("authorization"))
+        .and(with_auth_cookie())
+        // .and(warp::header::header("authorization"))
         .and(warp::query::<utils_models::DeviceControllerQueries>())
         .and(with_db(db.clone()))
         .and_then(device_data_handler);
 
     let devices_controller_route = warp::path!("devices" / "data")
         .and(warp::get())
-        .and(warp::header::header("authorization"))
+        .and(with_auth_cookie())
+        // .and(warp::header::header("authorization"))
         .and(warp::query::<utils_models::DeviceControllerQueries>())
         .and(with_db(db.clone()))
         .and_then(devices_data_handler);
 
     let devices_status_route = warp::path!("devices" / "status")
         .and(warp::get())
-        .and(warp::header::header("authorization"))
+        .and(with_auth_cookie())
+        // .and(warp::header::header("authorization"))
         .and(warp::query::<utils_models::DeviceStatusQueries>())
         .and(with_db(db.clone()))
         .and_then(device_status_handler);

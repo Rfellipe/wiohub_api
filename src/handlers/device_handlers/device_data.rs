@@ -5,8 +5,9 @@ use crate::utils::{
     utils_functions::handle_time_interval,
     utils_models::{ApiDeviceDataResponse, CustomMessage, DeviceControllerQueries},
 };
+use bson::oid::ObjectId;
 use futures::{StreamExt, TryStreamExt};
-use mongodb::bson::{doc, Document, oid::ObjectId};
+use mongodb::bson::{doc, Document};
 use mongodb::options::FindOneOptions;
 use mongodb::{Collection, Database};
 
@@ -27,8 +28,11 @@ pub async fn devices_data_handler(
     opts: DeviceControllerQueries,
     db: Database,
 ) -> Result<impl warp::Reply, warp::Rejection> {
+    println!("{}, \n{:#?}", authorization, opts);
     let user_info =
         decode_jwt(authorization, &JWT_SECRET).map_err(|_e| warp::reject::custom(AuthError))?;
+    
+    println!("{:#?}", user_info);
 
     let (start, end) = match handle_time_interval(opts) {
         Ok(values) => values,
@@ -69,7 +73,7 @@ pub async fn devices_data_handler(
     let devices_id = device_coll
         .find(
             doc! {
-                "clientId": user_info.client_id,
+                "clientId": ObjectId::parse_str(user_info.client_id.as_ref().unwrap()).unwrap(),
                 "status": "active",
             },
             None,
@@ -82,6 +86,8 @@ pub async fn devices_data_handler(
         .into_iter()
         .map(|doc| doc.id)
         .collect::<Vec<_>>();
+
+    println!("All Devices: {:#?}", devices_id);
 
     // Fetch data for the devices within the time range and group by 10-minute intervals
     let pipeline = [

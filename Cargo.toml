@@ -13,6 +13,7 @@ argon2 = "0.5.3"
 jsonwebtoken = "9.3.1"
 mongodb = "2.1"
 futures = "0.3"
+cookie = "0.18"
 serde_qs = "0.12"
 utoipa = { version = "^5", features = ["uuid", "chrono"] }
 utoipa-swagger-ui = { version = "^9", features = ["debug-embed", "reqwest", "actix-web"] }

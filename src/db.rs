@@ -18,7 +18,11 @@ pub async fn get_db() -> mongodb::error::Result<mongodb::Database> {
             .await?;
     let client = Client::with_options(options)?;
 
-    // Ok(client.database("wiohub2-0"))
-    Ok(client.database("wiohub"))
+    println!("Connected to MongoDB!");
+
+    println!("{:?}",client.list_database_names(None, None).await?);
+
+    // return data base wiohub-io
+    Ok(client.database("wiohub-io"))
 }
 
