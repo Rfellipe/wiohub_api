@@ -9,6 +9,8 @@ pub async fn get_db() -> mongodb::error::Result<mongodb::Database> {
     let client_uri =
         env::var("MONGODB_URI").expect("You must set the MONGODB_URI environment var!");
 
+    println!("{}",client_uri);
+
     // A Client is needed to connect to MongoDB:
     // An extra line of code to work around a DNS issue on Windows:
     let options =
@@ -18,6 +20,5 @@ pub async fn get_db() -> mongodb::error::Result<mongodb::Database> {
 
     // Ok(client.database("wiohub2-0"))
     Ok(client.database("wiohub"))
-
 }
 

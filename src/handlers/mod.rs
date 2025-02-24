@@ -6,7 +6,7 @@ use utoipa::OpenApi;
 #[derive(OpenApi)]
 #[openapi(
     paths(
-            device_handlers::device_data::device_data_handler,
+            device_handlers::device_data::devices_data_handler,
             device_handlers::device_status::device_status_handler,
             auth_handlers::auth::auth_signin_handler
         )

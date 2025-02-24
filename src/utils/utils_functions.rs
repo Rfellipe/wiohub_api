@@ -1,4 +1,5 @@
 use super::utils_models::DeviceControllerQueries;
+use std::process::Command;
 use chrono::{DateTime, Utc, FixedOffset};
 use chrono::ParseError;
 
@@ -12,4 +13,18 @@ pub fn handle_time_interval(time_interval: DeviceControllerQueries) -> Result<(D
     let end_utc: DateTime<Utc> = end_dt.with_timezone(&Utc);
 
     Ok((start_utc, end_utc))
+}
+
+pub fn send_to_zabbix(metric: &str, value: String) {
+    let hostname = "api_rust"; // Change this to match your Zabbix hostname
+    let zabbix_server = "192.168.122.116"; // Replace with your Zabbix server IP
+
+    let output = Command::new("zabbix_sender")
+        .args(&["-z", zabbix_server, "-s", hostname, "-k", metric, "-o", &value.to_string()])
+        .output()
+        .expect("Failed to send data to Zabbix");
+
+    if !output.status.success() {
+        eprintln!("Zabbix Sender failed: {:?}", output);
+    }
 }
