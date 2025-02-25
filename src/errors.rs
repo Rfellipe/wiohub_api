@@ -1,5 +1,6 @@
 use argon2::password_hash::Error as ArgonError;
 use bson::oid::Error as BsonError;
+    use bson::datetime::Error as DateTimeError;
 use mongodb::error::Error as MongoError;
 use warp::{reject::Reject, reply::Reply};
 use warp_rate_limit::{add_rate_limit_headers, get_rate_limit_info, RateLimitRejection};
@@ -9,6 +10,9 @@ pub struct MongoRejection(pub MongoError);
 
 #[derive(Debug)]
 pub struct BsonRejection(pub BsonError);
+
+#[derive(Debug)]
+pub struct BsonDateTimeRejection(pub DateTimeError);
 
 #[derive(Debug)]
 pub struct HashRejection(pub ArgonError);
@@ -24,6 +28,7 @@ pub struct NoRecordFound;
 
 impl Reject for MongoRejection {}
 impl Reject for BsonRejection {}
+impl Reject for BsonDateTimeRejection {}
 impl Reject for HashRejection {}
 impl Reject for SignInError {}
 impl Reject for AuthError {}
@@ -80,6 +85,12 @@ pub async fn handle_rejection(
        // Handle Bson errors
        Ok(warp::reply::with_status(
            format!("Bson error: {}", e),
+           warp::http::StatusCode::INTERNAL_SERVER_ERROR,
+       ).into_response())
+   } else if let Some(BsonDateTimeRejection(e)) = err.find() {
+       // Handle Bson errors
+       Ok(warp::reply::with_status(
+           format!("Bson Date Time error: {}", e),
            warp::http::StatusCode::INTERNAL_SERVER_ERROR,
        ).into_response())
    } else {

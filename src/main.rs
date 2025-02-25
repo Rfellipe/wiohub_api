@@ -23,13 +23,14 @@ use utils::utils_models;
 use db::get_db;
 // use routes::all_routes;
 use utoipa::OpenApi;
-use warp::{self, filters::path::FullPath, Filter};
+use warp::{self, filters::path::FullPath, Filter, http::Method};
 use warp_rate_limit::{with_rate_limit, RateLimitConfig};
 
 #[tokio::main]
 async fn main() -> mongodb::error::Result<()> {
     let config = swagger::doc_config();
     let db = get_db().await?;
+    
 
     // 60 request per 60 seconds
     let public_routes_rate_limit = RateLimitConfig::max_per_window(5, 5 * 60);
@@ -91,7 +92,7 @@ async fn main() -> mongodb::error::Result<()> {
         .or(devices_controller_route)
         .or(devices_status_route)
         .recover(errors::handle_rejection)
-        .with(warp::wrap_fn(monitoring_wrapper));
+        .with(with_cors());
 
     warp::serve(routes).run(([127, 0, 0, 1], 3030)).await;
 
@@ -102,6 +103,15 @@ fn with_db(
     db: mongodb::Database,
 ) -> impl Filter<Extract = (mongodb::Database,), Error = std::convert::Infallible> + Clone {
     warp::any().map(move || db.clone())
+}
+
+fn with_cors() -> warp::filters::cors::Cors {
+    warp::cors()
+        .allow_origin("http://localhost:3000")
+        .allow_headers(vec!["Content-Type", "Authorization"])
+        .allow_methods(&[Method::GET, Method::POST])
+        .allow_credentials(true)
+        .build()
 }
 
 fn monitoring_wrapper<F, T>(

@@ -1,8 +1,9 @@
 use warp::Filter;
 use cookie::Cookie;
+use crate::errors::AuthError;
 
 pub fn with_auth_cookie() -> impl Filter<Extract = (String,), Error = warp::Rejection> + Clone {
-    warp::header::optional::<String>("cookie")
+    warp::header::optional::<String>("Cookie")
         .and_then(|cookie_header: Option<String>| async move {
             if let Some(cookie_header) = cookie_header {
                 let cookies = cookie_header.split("; ");
@@ -18,7 +19,7 @@ pub fn with_auth_cookie() -> impl Filter<Extract = (String,), Error = warp::Reje
         })
 }
 
-#[derive(Debug)]
-struct AuthError;
-
-impl warp::reject::Reject for AuthError {}
+// #[derive(Debug)]
+// struct AuthError;
+// 
+// impl warp::reject::Reject for AuthError {}

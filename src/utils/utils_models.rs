@@ -28,6 +28,37 @@ pub struct CustomMessage {
     pub code: u16,
 }
 
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+pub struct SensorData {
+    #[serde(rename = "sensorType")]
+    pub sensor_type: String,
+    pub value: f64,
+    pub unit: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+pub struct Settings {
+    pub timezone: String,
+    pub tminterval: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+pub struct Location {
+    point: Vec<f64>,
+}
+
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+pub struct DataPoint {
+    timestamp: String,
+    sensors: std::collections::HashMap<String, SensorValue>,
+}
+
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+pub struct SensorValue {
+    unit: String,
+    values: f64,
+}
+
 // Response for /devices/data route
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct ApiDeviceDataResponse {
@@ -41,36 +72,5 @@ pub struct ApiDeviceDataResponse {
     pub serial: String,
     pub settings: Settings,
     pub location: String,
-    pub data: Vec<Data>,
+    pub data: Vec<DataPoint>,
 }
-
-#[derive(Debug, Serialize, Deserialize, ToSchema)]
-pub struct Settings {
-    pub timezone: String,
-    pub tminterval: i32,
-}
-
-#[derive(Debug, Serialize, Deserialize, ToSchema)]
-pub struct Data {
-    pub timestamp: String,
-    pub sensors: Sensors
-}
-
-#[derive(Debug, Serialize, Deserialize, ToSchema)]
-pub struct Sensors {
-    #[serde (rename = "sensorType")]
-    pub sensor_type: Vec<SensorValues>
-}
-
-#[derive(Debug, Serialize, Deserialize, ToSchema)]
-pub struct SensorValues {
-    pub value: MinMaxAvg
-}
-
-#[derive(Debug, Serialize, Deserialize, ToSchema)]
-pub struct MinMaxAvg {
-    pub min: Option<f64>,
-    pub max: Option<f64>,
-    pub average: Option<f64>,
-}
-

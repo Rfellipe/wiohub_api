@@ -1,13 +1,16 @@
-use crate::errors::{AuthError, MongoRejection, NoRecordFound, BsonRejection};
+use crate::errors::{
+    AuthError, BsonDateTimeRejection, BsonRejection, MongoRejection, NoRecordFound,
+};
 use crate::handlers::auth_handlers::security::{decode_jwt, JWT_SECRET};
-use crate::models::{Client, Data, Device};
+use crate::models::{Data, Device};
 use crate::utils::{
     utils_functions::handle_time_interval,
     utils_models::{ApiDeviceDataResponse, CustomMessage, DeviceControllerQueries},
 };
-use bson::oid::ObjectId;
-use futures::{StreamExt, TryStreamExt};
-use mongodb::bson::{doc, Document};
+use bson::DateTime;
+use futures::stream::Collect;
+use futures::TryStreamExt;
+use mongodb::bson::{doc, oid::ObjectId, Bson, Document};
 use mongodb::options::FindOneOptions;
 use mongodb::{Collection, Database};
 
@@ -31,7 +34,7 @@ pub async fn devices_data_handler(
     println!("{}, \n{:#?}", authorization, opts);
     let user_info =
         decode_jwt(authorization, &JWT_SECRET).map_err(|_e| warp::reject::custom(AuthError))?;
-    
+
     println!("{:#?}", user_info);
 
     let (start, end) = match handle_time_interval(opts) {
@@ -266,18 +269,16 @@ pub async fn device_data_handler(
     };
 
     let data_coll: Collection<Data> = db.collection("Data");
-    let device = ObjectId::parse_str(device_id)
-        .map_err(|e| warp::reject::custom(BsonRejection(e)))?;
 
     // Fetch data for the devices within the time range and group by 10-minute intervals
     let pipeline = [
         doc! {
             "$match": doc! {
-                "deviceId": device,
+                "deviceId": ObjectId::parse_str(device_id).unwrap(),
                 "timestamp": doc! {
-                    "$gte": start,
-                    "$lte": end,
-                },
+                    "$gte": DateTime::parse_rfc3339_str(start).map_err(|e| warp::reject::custom(BsonDateTimeRejection(e)))?,
+                    "$lte": DateTime::parse_rfc3339_str(end).map_err(|e| warp::reject::custom(BsonDateTimeRejection(e)))?
+                }
             }
         },
         doc! {
@@ -313,7 +314,30 @@ pub async fn device_data_handler(
                 "data": doc! {
                     "$push": doc! {
                         "sensorType": "$sensorType",
-                        "value": "$value"
+                        "value": doc! {
+                            "$cond": doc! {
+                                "if": doc! {
+                                    "$eq": [
+                                        "$value",
+                                        0
+                                    ]
+                                },
+                                "then": 0,
+                                "else": "$value"
+                            },
+                            "$cond": doc! {
+                                "if": doc! {
+                                    "$eq": [
+                                        "$sensorType",
+                                        "rain"
+                                    ]
+                                },
+                                "then": doc! {
+                                    "$sum": "$value"
+                                },
+                                "else": "$value"
+                            }
+                        }
                     }
                 },
                 "device": doc! {
@@ -358,18 +382,18 @@ pub async fn device_data_handler(
                                             "k": "$$sensor.sensorType",
                                             "v": doc! {
                                                 "unit": "$$sensor.unit",
-                                                // "values": "$$sensor.value"
                                                 "values": doc! {
-                                                    "min": doc! {
-                                                        "$min": "$$sensor.value"
-                                                    },
-                                                    "max": doc! {
-                                                        "$max": "$$sensor.value"
-                                                    },
-                                                    "average": doc! {
-                                                        "$avg": "$$sensor.value"
+                                                    "$cond": doc! {
+                                                        "if": doc! {
+                                                            "$eq": [
+                                                                "$$sensor.value",
+                                                                0
+                                                            ]
+                                                        },
+                                                        "then": 0,
+                                                        "else": "$$sensor.value"
                                                     }
-                                                }
+                                            }
                                             }
                                         }
                                     }
@@ -419,7 +443,8 @@ pub async fn device_data_handler(
         .await
         .map_err(|e| warp::reject::custom(MongoRejection(e)))?;
 
-    println!("{:#?}", all_data);
+
+    println!("sending req");
 
     Ok(warp::reply::json(&all_data))
 }
