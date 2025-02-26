@@ -4,7 +4,6 @@ mod handlers;
 mod models;
 mod swagger;
 mod utils;
-// mod security;
 
 use std::{
     net::SocketAddr,
@@ -91,8 +90,10 @@ async fn main() -> mongodb::error::Result<()> {
         .or(device_controller_route)
         .or(devices_controller_route)
         .or(devices_status_route)
+        .with(with_cors())
         .recover(errors::handle_rejection)
-        .with(with_cors());
+        // .with(with_cors())
+        .with(warp::wrap_fn(monitoring_wrapper));
 
     warp::serve(routes).run(([127, 0, 0, 1], 3030)).await;
 
