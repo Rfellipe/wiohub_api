@@ -23,7 +23,7 @@ pub async fn get_db() -> mongodb::error::Result<mongodb::Database> {
     println!("{:?}",client.list_database_names(None, None).await?);
 
     // return data base wiohub-io
-    Ok(client.database("wiohub-io"))
-    // Ok(client.database("wiohub"))
+    // Ok(client.database("wiohub-io"))
+    Ok(client.database("wiohub"))
 }
 

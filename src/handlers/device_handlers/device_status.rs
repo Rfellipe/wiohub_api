@@ -1,4 +1,4 @@
-use crate::errors::{AuthError, MongoRejection};
+use crate::errors::MongoRejection;
 use crate::handlers::auth_handlers::security::{decode_jwt, JWT_SECRET};
 use crate::models::{Client, Device};
 use crate::utils::utils_models::{ApiDeviceDataResponse, CustomMessage, DeviceStatusQueries};
@@ -25,7 +25,7 @@ pub async fn device_status_handler(
     db: Database,
 ) -> Result<impl warp::Reply, warp::Rejection> {
     let user_info =
-        decode_jwt(authorization, &JWT_SECRET).map_err(|_e| warp::reject::custom(AuthError))?;
+        decode_jwt(authorization, &JWT_SECRET, db.clone()).await?;
 
     let device_coll: Collection<Device> = db.collection("Device");
 

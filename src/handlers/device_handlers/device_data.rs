@@ -1,6 +1,4 @@
-use crate::errors::{
-    AuthError, BsonDateTimeRejection, MongoRejection
-};
+use crate::errors::{BsonDateTimeRejection, MongoRejection};
 use crate::handlers::auth_handlers::security::{decode_jwt, JWT_SECRET};
 use crate::models::{Data, Device};
 use crate::utils::{
@@ -29,8 +27,7 @@ pub async fn devices_data_handler(
     opts: DeviceControllerQueries,
     db: Database,
 ) -> Result<impl warp::Reply, warp::Rejection> {
-    let user_info =
-        decode_jwt(authorization, &JWT_SECRET).map_err(|_e| warp::reject::custom(AuthError))?;
+    let user_info = decode_jwt(authorization, &JWT_SECRET, db.clone()).await?;
 
     let (start, end) = match handle_time_interval(opts) {
         Ok(values) => values,
@@ -261,14 +258,28 @@ pub async fn devices_data_handler(
     Ok(warp::reply::json(&all_data))
 }
 
+#[utoipa::path(
+        get,
+        path = "devices/data/{id}",
+        params(
+            ("id" = String, Path, description = "Device database id to get data from"),
+            DeviceControllerQueries
+        ),
+        responses(
+            (status = 200, description = "Device datas received", body = [ApiDeviceDataResponse]),
+            (status = 400, description = "Dates parse error", body = [CustomMessage]),
+            (status = 403, description = "Authorization token invalid or expired", body = String),
+            (status = 500, description = "Internal Server Error", body = String),
+        ),
+    )
+]
 pub async fn device_data_handler(
     device_id: String,
     authorization: String,
     opts: DeviceControllerQueries,
     db: Database,
 ) -> Result<impl warp::Reply, warp::Rejection> {
-    let _user_info =
-        decode_jwt(authorization, &JWT_SECRET).map_err(|_e| warp::reject::custom(AuthError))?;
+    let _user_info = decode_jwt(authorization, &JWT_SECRET, db.clone()).await?;
 
     let (start, end) = match handle_time_interval(opts) {
         Ok(values) => values,

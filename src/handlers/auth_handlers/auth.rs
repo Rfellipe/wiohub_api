@@ -41,18 +41,22 @@ pub async fn auth_signin_handler(
                     "phone": 1,
                     "password": 1,
                     "role": 1,
+                    "clientId": 1,
                     "tenantId": 1
                 })
                 .build(),
         )
         .await
         .map_err(|e| warp::reject::custom(MongoRejection(e)))?;
-    // .ok_or_else(|| warp::reject::custom(SignInError))?;
+
+        println!("{:#?}", user);
 
     if let Some(user) = user {
         let password = user.clone().password;
         let id = user.clone().id;
+        let client_id = user.clone().client_id.ok_or_else(|| warp::reject::not_found())?;
         let tenant_id = user.tenant_id.ok_or_else(|| warp::reject::not_found())?;
+
 
         let parsed_hash =
             PasswordHash::new(&password).map_err(|e| warp::reject::custom(HashRejection(e)))?;
@@ -65,7 +69,7 @@ pub async fn auth_signin_handler(
             return Err(warp::reject::custom(SignInError));
         }
 
-        match generate_jwt(&id.to_string(), &tenant_id.to_string(), JWT_SECRET, 3600) {
+        match generate_jwt(&id.to_string(), &tenant_id.to_string(), &client_id.to_string(), JWT_SECRET, 3600) {
             Ok(token) => {
                 let mut response =
                     warp::reply::with_status(token, warp::http::StatusCode::OK).into_response();

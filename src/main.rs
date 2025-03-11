@@ -15,7 +15,13 @@ use crate::handlers::{
     auth_handlers::auth::auth_signin_handler,
     device_handlers::{device_data::devices_data_handler, device_status::device_status_handler},
 };
-use handlers::{auth_handlers::session::with_auth_cookie, device_handlers::device_data::device_data_handler};
+use handlers::{
+    auth_handlers::session::with_auth, 
+    device_handlers::{
+        device_data::device_data_handler,
+        device::device
+    }
+};
 use utils::utils_functions::send_to_zabbix;
 use utils::utils_models;
 
@@ -28,8 +34,7 @@ use warp_rate_limit::{with_rate_limit, RateLimitConfig};
 #[tokio::main]
 async fn main() -> mongodb::error::Result<()> {
     let config = swagger::doc_config();
-    let db = get_db().await?;
-    
+    let db = get_db().await?;   
 
     // 60 request per 60 seconds
     let public_routes_rate_limit = RateLimitConfig::max_per_window(5, 5 * 60);
@@ -47,13 +52,17 @@ async fn main() -> mongodb::error::Result<()> {
         .and(warp::any().map(move || config.clone()))
         .and_then(swagger::serve_swagger);
 
-    let ping = warp::path!("ping")
-        .and(warp::get())
-        .map(|| warp::reply::with_status("Pong", warp::http::StatusCode::OK));
+    let devices_route = warp::path!("devices")
+        .and(warp::post())
+        .and(with_auth())
+        .and(warp::body::content_length_limit(1024 * 16))
+        .and(warp::body::json())
+        .and(with_db(db.clone()))    
+        .and_then(device);
 
     let device_controller_route = warp::path!("device" / "data" / String)
         .and(warp::get())
-        .and(with_auth_cookie())
+        .and(with_auth())
         // .and(warp::header::header("authorization"))
         .and(warp::query::<utils_models::DeviceControllerQueries>())
         .and(with_db(db.clone()))
@@ -61,7 +70,7 @@ async fn main() -> mongodb::error::Result<()> {
 
     let devices_controller_route = warp::path!("devices" / "data")
         .and(warp::get())
-        .and(with_auth_cookie())
+        .and(with_auth())
         // .and(warp::header::header("authorization"))
         .and(warp::query::<utils_models::DeviceControllerQueries>())
         .and(with_db(db.clone()))
@@ -69,7 +78,7 @@ async fn main() -> mongodb::error::Result<()> {
 
     let devices_status_route = warp::path!("devices" / "status")
         .and(warp::get())
-        .and(with_auth_cookie())
+        .and(with_auth())
         // .and(warp::header::header("authorization"))
         .and(warp::query::<utils_models::DeviceStatusQueries>())
         .and(with_db(db.clone()))
@@ -85,14 +94,13 @@ async fn main() -> mongodb::error::Result<()> {
     let routes = root
         .or(api_doc)
         .or(swagger_ui)
-        .or(ping)
         .or(signin_route)
+        .or(devices_route)
         .or(device_controller_route)
         .or(devices_controller_route)
         .or(devices_status_route)
         .with(with_cors())
         .recover(errors::handle_rejection)
-        // .with(with_cors())
         .with(warp::wrap_fn(monitoring_wrapper));
 
     warp::serve(routes).run(([127, 0, 0, 1], 3030)).await;

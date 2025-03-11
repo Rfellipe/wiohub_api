@@ -1,4 +1,11 @@
+use crate::errors::{AuthError, MongoRejection};
+use crate::models::User;
 use jsonwebtoken::{decode, encode, DecodingKey, EncodingKey, Header, Validation};
+use mongodb::{
+    bson::{doc, oid::ObjectId},
+    options::FindOneOptions,
+    Collection, Database,
+};
 use serde::{Deserialize, Serialize};
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -20,6 +27,7 @@ pub struct Claims {
 pub fn generate_jwt(
     user_id: &str,
     tenant_id: &str,
+    client_id: &str,
     secret: &str,
     expires_in: u64,
 ) -> Result<String, jsonwebtoken::errors::Error> {
@@ -39,7 +47,7 @@ pub fn generate_jwt(
         tenant: Some(tenant_id.to_string()),
         avatar: Some("".to_string()),
         role: Some("".to_string()),
-        client_id: Some("".to_string()),
+        client_id: Some(client_id.to_string()),
         expires: Some("".to_string()),
         iat: issued as usize,
         exp: expiration as usize,
@@ -54,14 +62,71 @@ pub fn generate_jwt(
     Ok(token)
 }
 
-pub fn decode_jwt(
+pub async fn decode_jwt(
     authorization: String,
     secret: &str,
-) -> Result<Claims, jsonwebtoken::errors::Error> {
-    let token = authorization.trim_start_matches("Bearer ");
+    db: Database,
+) -> Result<Claims, warp::Rejection> {
+    // let token = authorization.trim_start_matches("Bearer ");
 
-    let decoding_key = DecodingKey::from_secret(secret.as_ref());
-    let decoded = decode::<Claims>(token, &decoding_key, &Validation::default())?;
+    if authorization.starts_with("Bearer ") {
+        let api_key = authorization.trim_start_matches("Bearer ");
 
-    Ok(decoded.claims)
+        let user_coll: Collection<User> = db.collection("User");
+        let user = user_coll
+            .find_one(
+                doc! {
+                    "apiKey": api_key
+                },
+                FindOneOptions::builder()
+                    .projection(doc! {
+                        "name": 1,
+                        "email": 1,
+                        "phone": 1,
+                        "password": 1,
+                        "role": 1,
+                        "clientId": 1,
+                        "tenantId": 1
+                    })
+                    .build(),
+            )
+            .await
+            .map_err(|e| warp::reject::custom(MongoRejection(e)))?;
+
+        if let Some(user) = user {
+            let expiration = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .expect("Time went backwards")
+                .as_secs()
+                + 3600;
+
+            let issued = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .expect("Time went backwards")
+                .as_secs();
+
+            let claims = Claims {
+                id: user.id.to_string(),
+                tenant: user.tenant_id.map(|id| id.to_string()),
+                avatar: user.avatar.map(|a| a.to_string()),
+                role: None,
+                client_id: user.client_id.map(|id| id.to_string()),
+                expires: None, // Change as needed
+                iat: issued as usize,
+                exp: expiration as usize,
+            };
+
+            println!("{:#?}", claims);
+
+            Ok(claims)
+        } else {
+            Err(warp::reject::custom(AuthError))
+        }
+    } else {
+        let decoding_key = DecodingKey::from_secret(secret.as_ref());
+        match decode::<Claims>(&authorization, &decoding_key, &Validation::default()) {
+            Ok(decoded) => Ok(decoded.claims),
+            Err(_) => Err(warp::reject::custom(AuthError)), // Return an authentication error if decoding fails
+        }
+    }
 }

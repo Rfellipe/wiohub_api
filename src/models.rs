@@ -205,12 +205,15 @@ pub struct User {
     pub phone: String,
     pub password: String,
     pub client: Option<Client>,
+    #[serde(rename = "clientId")]
     pub client_id: Option<ObjectId>,
     #[serde(rename = "isPending")]
     pub is_pending: Option<bool>,
     pub role: Option<Role>,
     #[serde(rename = "tenantId")]
     pub tenant_id: Option<String>,
+    #[serde(rename = "apiKey")]
+    pub api_ket: Option<String>,
     #[serde(rename = "failedLoginAttempts")]
     pub failed_login_attempts: Option<i32>,
     #[serde(rename = "lockUntil")]
