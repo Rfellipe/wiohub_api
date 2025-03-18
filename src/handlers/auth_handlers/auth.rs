@@ -28,7 +28,6 @@ pub async fn auth_signin_handler(
     db: Database,
 ) -> Result<impl warp::Reply, warp::Rejection> {
     let user_coll: Collection<User> = db.collection("User");
-    println!("{:#?}", body);
     let user = user_coll
         .find_one(
             doc! {
@@ -79,7 +78,7 @@ pub async fn auth_signin_handler(
             Err(_e) => Err(warp::reject::reject()),
         }
     } else {
-        println!("NO DATA FOUND FOR TYHOS EMAIL");
+        println!("NO DATA FOUND FOR THIS EMAIL");
         Err(warp::reject::custom(AuthError))
     }
 }

@@ -1,6 +1,13 @@
 use serde::{Deserialize, Serialize};
 use utoipa::{IntoParams, ToSchema};
 
+// Query needed for client to connect to websocket
+#[derive(Debug, Serialize, Deserialize)]
+pub struct WebSocketQuery {
+    #[serde(rename = "workspaceId")]
+    pub workspace_id: Vec<String>
+}
+
 // Query for devices/data route
 #[derive(Debug, Serialize, Deserialize, IntoParams)]
 pub struct DeviceControllerQueries {

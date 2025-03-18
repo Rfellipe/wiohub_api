@@ -1,5 +1,6 @@
 pub mod device_handlers;
 pub mod auth_handlers;
+pub mod websocket_handlers;
 
 use utoipa::OpenApi;
 

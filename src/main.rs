@@ -5,36 +5,43 @@ mod models;
 mod swagger;
 mod utils;
 
-use std::{
-    net::SocketAddr,
-    sync::{Arc, Mutex},
-    time::Instant,
-};
-
 use crate::handlers::{
     auth_handlers::auth::auth_signin_handler,
     device_handlers::{device_data::devices_data_handler, device_status::device_status_handler},
 };
 use handlers::{
-    auth_handlers::session::with_auth, 
-    device_handlers::{
-        device_data::device_data_handler,
-        device::device
-    }
+    auth_handlers::session::with_auth,
+    device_handlers::{device::device, device_data::device_data_handler},
+    websocket_handlers::websocket::handle_ws_client,
 };
+use std::{
+    collections::HashMap,
+    net::SocketAddr,
+    sync::{Arc, Mutex},
+    time::Instant,
+};
+
+use tokio::sync::mpsc;
 use utils::utils_functions::send_to_zabbix;
 use utils::utils_models;
-
 use db::get_db;
-// use routes::all_routes;
 use utoipa::OpenApi;
-use warp::{self, filters::path::FullPath, Filter, http::Method};
+use warp::{self, filters::{path::FullPath, ws::Message}, http::Method, Filter};
 use warp_rate_limit::{with_rate_limit, RateLimitConfig};
+
+type ClientId = String;
+type WorkspaceId = String;
+type Sender = Arc::<mpsc::UnboundedSender<Message>>;
+pub type Clients = Arc<Mutex<HashMap<ClientId, Vec<Sender>>>>;
+pub type ClientsWorkspace = Arc<Mutex<HashMap<WorkspaceId, Vec<Sender>>>>;
 
 #[tokio::main]
 async fn main() -> mongodb::error::Result<()> {
     let config = swagger::doc_config();
-    let db = get_db().await?;   
+    let db = get_db().await?;
+
+    let clients: Clients = Arc::new(Mutex::new(HashMap::new()));
+    let clients_workspaces: ClientsWorkspace = Arc::new(Mutex::new(HashMap::new()));
 
     // 60 request per 60 seconds
     let public_routes_rate_limit = RateLimitConfig::max_per_window(5, 5 * 60);
@@ -57,7 +64,7 @@ async fn main() -> mongodb::error::Result<()> {
         .and(with_auth())
         .and(warp::body::content_length_limit(1024 * 16))
         .and(warp::body::json())
-        .and(with_db(db.clone()))    
+        .and(with_db(db.clone()))
         .and_then(device);
 
     let device_controller_route = warp::path!("device" / "data" / String)
@@ -91,6 +98,32 @@ async fn main() -> mongodb::error::Result<()> {
         .and(with_db(db.clone()))
         .and_then(auth_signin_handler);
 
+    let web_socket = warp::path("websocket")
+        .and(warp::ws())
+        .and(with_auth())
+        .and(with_db(db.clone()))
+        .and(warp::query::raw())
+        .and(with_conn_maps(clients, clients_workspaces))
+        .map(
+            |ws: warp::ws::Ws,
+             authorization: String,
+             db: mongodb::Database,
+             workspace_id: String, 
+             clients: Clients, 
+             clients_workspaces: ClientsWorkspace| {
+                ws.on_upgrade(move |websocket| {
+                    handle_ws_client(
+                        websocket,
+                        authorization,
+                        db,
+                        workspace_id,
+                        clients,
+                        clients_workspaces
+                    )
+                })
+            },
+        );
+
     let routes = root
         .or(api_doc)
         .or(swagger_ui)
@@ -99,9 +132,10 @@ async fn main() -> mongodb::error::Result<()> {
         .or(device_controller_route)
         .or(devices_controller_route)
         .or(devices_status_route)
+        .or(web_socket)
         .with(with_cors())
-        .recover(errors::handle_rejection)
-        .with(warp::wrap_fn(monitoring_wrapper));
+        .recover(errors::handle_rejection);
+    // .with(warp::wrap_fn(monitoring_wrapper));
 
     warp::serve(routes).run(([127, 0, 0, 1], 3030)).await;
 
@@ -123,9 +157,16 @@ fn with_cors() -> warp::filters::cors::Cors {
         .build()
 }
 
+fn with_conn_maps(
+    clients_map: Clients,
+    workspaces_map: ClientsWorkspace 
+) -> impl Filter<Extract = (Clients, ClientsWorkspace), Error = std::convert::Infallible> + Clone {
+    warp::any().map(move || (clients_map.clone(), workspaces_map.clone())).untuple_one()
+}
+
 fn monitoring_wrapper<F, T>(
     filter: F,
-) -> impl Filter<Extract = (T,),> + Clone + Send + Sync + 'static
+) -> impl Filter<Extract = (T,)> + Clone + Send + Sync + 'static
 where
     F: Filter<Extract = (T,), Error = std::convert::Infallible> + Clone + Send + Sync + 'static,
     T: warp::Reply + Send + 'static,
@@ -144,13 +185,22 @@ where
         })
         .untuple_one()
         .and(filter)
-        .map(move |path: warp::path::FullPath, ip: Option<std::net::SocketAddr>, arg: T| {
-            let elapsed = start_time.lock().unwrap().elapsed().as_secs_f64();
-            let ip_str = ip.map(|addr| addr.ip().to_string()).unwrap_or_else(|| "unknown".to_string());
+        .map(
+            move |path: warp::path::FullPath, ip: Option<std::net::SocketAddr>, arg: T| {
+                let elapsed = start_time.lock().unwrap().elapsed().as_secs_f64();
+                let ip_str = ip
+                    .map(|addr| addr.ip().to_string())
+                    .unwrap_or_else(|| "unknown".to_string());
 
-            let value = format!("Request to {} from {} took {:.3} seconds", path.as_str(), ip_str, elapsed);
+                let value = format!(
+                    "Request to {} from {} took {:.3} seconds",
+                    path.as_str(),
+                    ip_str,
+                    elapsed
+                );
 
-            send_to_zabbix("http_request_duration", value);
-            arg
-        })
+                send_to_zabbix("http_request_duration", value);
+                arg
+            },
+        )
 }
