@@ -47,7 +47,5 @@ pub async fn device(
         .await
         .map_err(|e| warp::reject::custom(MongoRejection(e)))?;
 
-    println!("{:#?}", device);
-
     Ok(warp::reply::reply())
 }

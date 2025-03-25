@@ -1,9 +1,93 @@
+use crate::models::{Filter, Workspace};
 use super::utils_models::DeviceControllerQueries;
-use std::process::Command;
-use chrono::{DateTime, Utc, FixedOffset};
+use bson::oid::ObjectId;
+use bson::Document;
 use chrono::ParseError;
+use chrono::{DateTime, FixedOffset, Utc};
+use futures::TryStreamExt;
+use mongodb::{bson::doc, Collection, Database};
+use std::process::Command;
 
-pub fn handle_time_interval(time_interval: DeviceControllerQueries) -> Result<(String, String), ParseError> {
+pub async fn find_device_filter(sensor_type: String, device_id: ObjectId, db: Database) -> Result<Option<Filter>, mongodb::error::Error> {
+    let filter_coll: Collection<Filter> = db.collection("Filter");
+    let mongo_filter = doc! {
+        "sensorType": sensor_type,
+        "deviceId": device_id
+    };
+
+    let filter = filter_coll.find_one(mongo_filter, None)
+        .await?;
+    
+    Ok(filter)
+} 
+
+pub async fn find_workspace_with_device_id(
+    device_id: ObjectId,
+    db: Database,
+) -> Result<Vec<Document>, mongodb::error::Error> {
+    let workspace_coll: Collection<Workspace> = db.collection("Workspace");
+
+    let pipeline = [
+        doc! {
+            "$lookup": doc! {
+                "from": "Location",
+                "localField": "locationId",
+                "foreignField": "_id",
+                "as": "matchedLocations"
+            }
+        },
+        doc! {
+            "$lookup": doc! {
+                "from": "Device",
+                "localField": "matchedLocations._id",
+                "foreignField": "locationId",
+                "as": "matchedDevices"
+            }
+        },
+        doc! {
+            "$match": doc! {
+                "matchedDevices._id": device_id,
+            }
+        },
+        doc! {
+            "$project": doc! {
+                "clientId": 1,
+                "locations": doc! {
+                    "$filter": doc! {
+                        "input": "$matchedLocations",
+                        "as": "location",
+                        "cond": doc! {
+                            "$in": [
+                                "$$location._id",
+                                "$matchedDevices.locationId"
+                            ]
+                        }
+                    }
+                }
+            }
+        },
+        doc! {
+            "$project": doc! {
+                "clientId": 1,
+                "locations": doc! {
+                    "_id": 1
+                }
+            }
+        },
+    ];
+
+    let workspace = workspace_coll
+        .aggregate(pipeline, None)
+        .await?
+        .try_collect::<Vec<Document>>()
+        .await?;
+
+    Ok(workspace)
+}
+
+pub fn handle_time_interval(
+    time_interval: DeviceControllerQueries,
+) -> Result<(String, String), ParseError> {
     let start_dt: DateTime<FixedOffset> =
         DateTime::parse_from_rfc3339(&time_interval.start).expect("Failed to parse start string");
     let end_dt: DateTime<FixedOffset> =
@@ -12,6 +96,7 @@ pub fn handle_time_interval(time_interval: DeviceControllerQueries) -> Result<(S
     let start_utc: DateTime<Utc> = start_dt.with_timezone(&Utc);
     let end_utc: DateTime<Utc> = end_dt.with_timezone(&Utc);
 
+    #[expect(deprecated)]
     let target_offset = FixedOffset::east(3 * 3600);
 
     let start_target = start_utc.with_timezone(&target_offset);
@@ -40,7 +125,16 @@ pub fn send_to_zabbix(metric: &str, value: String) {
     }
 
     let output = Command::new("zabbix_sender")
-        .args(&["-z", zabbix_server, "-s", hostname, "-k", metric, "-o", &value.to_string()])
+        .args(&[
+            "-z",
+            zabbix_server,
+            "-s",
+            hostname,
+            "-k",
+            metric,
+            "-o",
+            &value.to_string(),
+        ])
         .output()
         .expect("Failed to send data to Zabbix");
 
@@ -48,3 +142,4 @@ pub fn send_to_zabbix(metric: &str, value: String) {
         eprintln!("Zabbix Sender failed: {:?}", output);
     }
 }
+

@@ -4,18 +4,15 @@ use bson::oid::ObjectId;
 // use uuid::Uuid;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
 pub struct Client {
     #[serde(rename = "_id")]
     pub id: ObjectId,
     pub name: Option<String>,
-    #[serde(rename = "tenantId")]
     pub tenant_id: Option<String>,
-    #[serde(rename = "createdAt")]
     pub created_at: Option<DateTime<Utc>>,
-    #[serde(rename = "updatedAt")]
     pub updated_at: Option<DateTime<Utc>>,
     pub ftp: Option<Ftp>,
-    #[serde(rename = "ftpId")]
     pub ftp_id: Option<ObjectId>,
     pub locations: Option<Vec<Location>>,
     pub workspaces: Option<Vec<Workspace>>,
@@ -25,6 +22,7 @@ pub struct Client {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
 pub struct Ftp {
     #[serde(rename = "_id")]
     pub id: ObjectId,
@@ -39,6 +37,7 @@ pub struct Ftp {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
 pub struct Extensions {
     #[serde(rename = "_id")]
     pub id: ObjectId,
@@ -55,6 +54,7 @@ pub struct Extensions {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
 pub struct ExtensionsOnDevice {
     #[serde(rename = "_id")]
     pub id: ObjectId,
@@ -67,42 +67,45 @@ pub struct ExtensionsOnDevice {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
 pub struct Location {
     #[serde(rename = "_id")]
     pub id: ObjectId,
-    pub name: String,
-    pub client: Client,
-    pub client_id: ObjectId,
-    pub polygon: serde_json::Value,
-    pub devices: Vec<Device>,
-    pub data: Vec<Data>,
-    pub logs: Vec<Log>,
-    pub notifications: Vec<Notification>,
-    pub created_at: DateTime<Utc>,
-    pub updated_at: DateTime<Utc>,
-    pub workspaces: Vec<Workspace>,
-    pub workspace_id: Vec<String>,
+    pub name: Option<String>,
+    pub client: Option<Client>,
+    pub client_id: Option<ObjectId>,
+    pub polygon: Option<serde_json::Value>,
+    pub devices: Option<Vec<Device>>,
+    pub data: Option<Vec<Data>>,
+    pub logs: Option<Vec<Log>>,
+    pub notifications: Option<Vec<Notification>>,
+    pub created_at: Option<DateTime<Utc>>,
+    pub updated_at: Option<DateTime<Utc>>,
+    pub workspaces: Option<Vec<Workspace>>,
+    pub workspace_id: Option<Vec<String>>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
 pub struct Workspace {
     #[serde(rename = "_id")]
     pub id: ObjectId,
-    pub name: String,
-    pub users: Vec<User>,
-    pub user_id: Vec<String>,
-    pub active: bool,
-    pub client_id: ObjectId,
-    pub client: Client,
-    pub created_at: DateTime<Utc>,
-    pub updated_at: DateTime<Utc>,
-    pub locations: Vec<Location>,
-    pub location_id: Vec<String>,
-    pub notifications: Vec<Notification>,
-    pub logs: Vec<Log>,
+    pub name: Option<String>,
+    pub users: Option<Vec<User>>,
+    pub user_id: Option<Vec<ObjectId>>,
+    pub active: Option<bool>,
+    pub client_id: Option<ObjectId>,
+    pub client: Option<Client>,
+    pub created_at: Option<DateTime<Utc>>,
+    pub updated_at: Option<DateTime<Utc>>,
+    pub locations: Option<Vec<Location>>,
+    pub location_id: Option<Vec<String>>,
+    pub notifications: Option<Vec<Notification>>,
+    pub logs: Option<Vec<Log>>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
 pub struct Note {
     #[serde(rename = "_id")]
     pub id: ObjectId,
@@ -115,14 +118,15 @@ pub struct Note {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
 pub struct Device {
     #[serde(rename = "_id")]
     pub id: ObjectId,
-    pub name: String,
+    pub name: Option<String>,
     #[serde(rename = "type")]
-    pub type_: String,
+    pub type_: Option<String>,
     pub point: Option<serde_json::Value>,
-    pub serial: String,
+    pub serial: Option<String>,
     pub location: Option<Location>,
     pub location_id: Option<ObjectId>,
     pub client: Option<Client>,
@@ -158,9 +162,11 @@ pub struct Device {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
 pub struct DeviceConnection {
     #[serde(rename = "_id")]
     pub id: ObjectId,
+    #[serde(rename = "type")]
     pub type_: String,
     pub status: String,
     pub signal_strength: Option<i32>,
@@ -175,6 +181,7 @@ pub struct DeviceConnection {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
 pub struct FileUpload {
     #[serde(rename = "_id")]
     pub id: ObjectId,
@@ -196,6 +203,7 @@ pub struct FileUpload {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
 pub struct User {
     #[serde(rename = "_id")]
     pub id: ObjectId,
@@ -205,42 +213,29 @@ pub struct User {
     pub phone: String,
     pub password: String,
     pub client: Option<Client>,
-    #[serde(rename = "clientId")]
     pub client_id: Option<ObjectId>,
-    #[serde(rename = "isPending")]
     pub is_pending: Option<bool>,
     pub role: Option<Role>,
-    #[serde(rename = "tenantId")]
     pub tenant_id: Option<String>,
-    #[serde(rename = "apiKey")]
     pub api_ket: Option<String>,
-    #[serde(rename = "failedLoginAttempts")]
     pub failed_login_attempts: Option<i32>,
-    #[serde(rename = "lockUntil")]
     pub lock_until: Option<DateTime<Utc>>,
-    #[serde(rename = "isLocked")]
     pub is_locked: Option<bool>,
-    #[serde(rename = "refreshToken")]
     pub refresh_token: Option<Vec<RefreshToken>>,
     pub logs: Option<Vec<Log>>,
     pub notes: Option<Vec<Note>>,
     pub notifications: Option<Vec<Notification>>,
-    #[serde(rename = "apiKeys")]
     pub api_keys: Option<Vec<ApiKey>>,
-    #[serde(rename = "softwareUpdate")]
     pub software_update: Option<Vec<SoftwareUpdate>>,
-    #[serde(rename = "fileUploads")]
     pub file_uploads: Option<Vec<FileUpload>>,
     pub workspaces: Option<Vec<Workspace>>,
-    #[serde(rename = "workspacecsId")]
     pub workspaces_id: Option<Vec<String>>,
-    #[serde(rename = "createdAt")]
     pub created_at: Option<DateTime<Utc>>,
-    #[serde(rename = "updatedAt")]
     pub updated_at: Option<DateTime<Utc>>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
 pub enum Role {
     ADMIN,
     OPERATOR,
@@ -248,40 +243,41 @@ pub enum Role {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
 pub struct Data {
     #[serde(rename = "_id")]
     pub id: ObjectId,
-    #[serde(rename = "sensorType")]
-    pub sensor_type: String,
+    pub sensor_type: Option<String>,
     pub value: Option<f32>,
     pub unit: Option<String>,
     pub status: Option<String>,
-    #[serde(with = "bson::serde_helpers::chrono_datetime_as_bson_datetime")]
-    pub timestamp: DateTime<Utc>,
-    pub location: Option<Location>,
-    #[serde(rename = "locationId")]
-    pub location_id: Option<ObjectId>,
+    // #[serde(with = "bson::serde_helpers::chrono_datetime_as_bson_datetime")]
+    pub timestamp: Option<bson::DateTime>,
+    pub location: Option<Vec<Location>>,
+    pub location_id: Option<Vec<ObjectId>>,
     pub device: Option<Device>,
-    #[serde(rename = "deviceId")]
     pub device_id: Option<ObjectId>,
     pub created_at: Option<DateTime<Utc>>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
 pub struct Filter {
     #[serde(rename = "_id")]
     pub id: ObjectId,
-    pub sensor_type: String,
+    #[serde(rename = "sensorType")]
+    pub sensor_type: Option<String>,
     pub min_value: Option<f32>,
     pub max_value: Option<f32>,
     pub unit: Option<String>,
-    pub created_at: DateTime<Utc>,
-    pub updated_at: DateTime<Utc>,
+    // pub created_at: Option<DateTime<Utc>>,
+    // pub updated_at: Option<DateTime<Utc>>,
     pub device_id: Option<ObjectId>,
     pub device: Option<Device>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
 pub struct Calculation {
     #[serde(rename = "_id")]
     pub id: ObjectId,
@@ -295,13 +291,15 @@ pub struct Calculation {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
 pub struct Log {
     #[serde(rename = "_id")]
     pub id: ObjectId,
+    #[serde(rename = "type")]
     pub type_: String,
     pub message: String,
     pub level: String,
-    pub timestamp: DateTime<Utc>,
+    pub timestamp: Option<DateTime<Utc>>,
     pub device: Option<Device>,
     pub device_id: Option<ObjectId>,
     pub location: Option<Location>,
@@ -309,18 +307,20 @@ pub struct Log {
     pub user: Option<User>,
     pub user_id: Option<ObjectId>,
     pub workspace: Option<Workspace>,
-    pub workspace_id: Option<ObjectId>,
-    pub created_at: DateTime<Utc>,
+    pub workspace_id: Option<Vec<ObjectId>>,
+    pub created_at: Option<DateTime<Utc>>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
 pub struct Notification {
     #[serde(rename = "_id")]
     pub id: ObjectId,
+    #[serde(rename = "type")]
     pub type_: String,
     pub message: String,
     pub read: bool,
-    pub timestamp: DateTime<Utc>,
+    pub timestamp: bson::DateTime,
     pub severity: String,
     pub device: Option<Device>,
     pub device_id: Option<ObjectId>,
@@ -330,10 +330,11 @@ pub struct Notification {
     pub user_id: Option<ObjectId>,
     pub workspace: Option<Workspace>,
     pub workspace_id: Option<ObjectId>,
-    pub created_at: DateTime<Utc>,
+    pub created_at: Option<DateTime<Utc>>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
 pub struct DeviceConfiguration {
     #[serde(rename = "_id")]
     pub id: ObjectId,
@@ -346,6 +347,7 @@ pub struct DeviceConfiguration {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
 pub struct SoftwareUpdate {
     #[serde(rename = "_id")]
     pub id: ObjectId,
@@ -366,12 +368,14 @@ pub struct SoftwareUpdate {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
 pub struct Software {
     #[serde(rename = "_id")]
     pub id: ObjectId,
     pub name: String,
     pub version: String,
     pub download_path: String,
+    #[serde(rename = "type")]
     pub type_: String,
     pub description: Option<String>,
     pub release_date: DateTime<Utc>,
@@ -382,6 +386,7 @@ pub struct Software {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
 pub struct ApiKey {
     #[serde(rename = "_id")]
     pub id: ObjectId,
@@ -402,6 +407,7 @@ pub struct ApiKey {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
 pub struct ApiPermission {
     #[serde(rename = "_id")]
     pub id: ObjectId,
@@ -415,6 +421,7 @@ pub struct ApiPermission {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
 pub struct ApiLog {
     #[serde(rename = "_id")]
     pub id: ObjectId,
@@ -430,6 +437,7 @@ pub struct ApiLog {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
 pub struct RefreshToken {
     #[serde(rename = "_id")]
     pub id: ObjectId,

@@ -13,6 +13,7 @@ use handlers::{
     auth_handlers::session::with_auth,
     device_handlers::{device::device, device_data::device_data_handler},
     websocket_handlers::websocket::handle_ws_client,
+    mqtt_handlers::mqtt::run_mqtt
 };
 use std::{
     collections::HashMap,
@@ -20,6 +21,7 @@ use std::{
     sync::{Arc, Mutex},
     time::Instant,
 };
+use rumqttc::{MqttOptions, AsyncClient};
 
 use tokio::sync::mpsc;
 use utils::utils_functions::send_to_zabbix;
@@ -39,6 +41,18 @@ pub type ClientsWorkspace = Arc<Mutex<HashMap<WorkspaceId, Vec<Sender>>>>;
 async fn main() -> mongodb::error::Result<()> {
     let config = swagger::doc_config();
     let db = get_db().await?;
+    let db_clone = db.clone();
+
+    let mqttoptions: MqttOptions = MqttOptions::new("rumqtt-async", "127.0.0.1", 1883);
+    let (client, eventloop) = AsyncClient::new(mqttoptions, 10);
+
+    let client = Arc::new(client);
+
+    let mqtt_client = Arc::clone(&client);
+
+    tokio::spawn(async move {
+        run_mqtt(mqtt_client, eventloop, db_clone).await;
+    }); 
 
     let clients: Clients = Arc::new(Mutex::new(HashMap::new()));
     let clients_workspaces: ClientsWorkspace = Arc::new(Mutex::new(HashMap::new()));
@@ -134,8 +148,8 @@ async fn main() -> mongodb::error::Result<()> {
         .or(devices_status_route)
         .or(web_socket)
         .with(with_cors())
-        .recover(errors::handle_rejection);
-    // .with(warp::wrap_fn(monitoring_wrapper));
+        .recover(errors::handle_rejection)
+        .with(warp::wrap_fn(monitoring_wrapper));
 
     warp::serve(routes).run(([127, 0, 0, 1], 3030)).await;
 

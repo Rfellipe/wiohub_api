@@ -1,6 +1,7 @@
 pub mod device_handlers;
 pub mod auth_handlers;
 pub mod websocket_handlers;
+pub mod mqtt_handlers;
 
 use utoipa::OpenApi;
 

@@ -49,8 +49,6 @@ pub async fn handle_ws_client(
 
     conns.add_client(user_info.client_id.as_ref().unwrap(), this_req.workspace_id.clone(), &client_tx_ptr);
 
-    println!("{:#?}", conns);
-
     while let Some(body) = rx.next().await {
         let message = match body {
             Ok(msg) => msg,
@@ -64,8 +62,6 @@ pub async fn handle_ws_client(
     }
 
     conns.remove_client(user_info.client_id.unwrap().as_str(), this_req.workspace_id, client_tx_ptr);
-
-    println!("{:#?}", conns);
 
     println!("client disconnected");
 }
@@ -86,7 +82,7 @@ pub async fn handle_websocket_message(
     println!("got request {} with body {}", req.kind, req.message);
 
     match req.kind.as_str() {
-        "notification" => println!("test"),
+        "notification" => handle_notification(&req.message),
         _ => println!("no"),
     }
 
@@ -96,6 +92,10 @@ pub async fn handle_websocket_message(
     })
     .unwrap();
     sender.send(Message::text(response)).await.unwrap();
+}
+
+fn handle_notification(msg: &str) {
+    println!("{}", msg);
 }
 
 #[derive(Debug)]
