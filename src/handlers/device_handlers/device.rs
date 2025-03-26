@@ -42,7 +42,7 @@ pub async fn device(
         "clientId": client_id
     };
 
-    let device = device_coll.clone_with_type()
+    let _  = device_coll.clone_with_type()
         .insert_one(new_device.clone(), None)
         .await
         .map_err(|e| warp::reject::custom(MongoRejection(e)))?;

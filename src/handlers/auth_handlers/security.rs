@@ -2,7 +2,7 @@ use crate::errors::{AuthError, MongoRejection};
 use crate::models::User;
 use jsonwebtoken::{decode, encode, DecodingKey, EncodingKey, Header, Validation};
 use mongodb::{
-    bson::{doc, oid::ObjectId},
+    bson::doc,
     options::FindOneOptions,
     Collection, Database,
 };
@@ -67,8 +67,6 @@ pub async fn decode_jwt(
     secret: &str,
     db: Database,
 ) -> Result<Claims, warp::Rejection> {
-    // let token = authorization.trim_start_matches("Bearer ");
-
     if authorization.starts_with("Bearer ") {
         let api_key = authorization.trim_start_matches("Bearer ");
 
@@ -115,8 +113,6 @@ pub async fn decode_jwt(
                 iat: issued as usize,
                 exp: expiration as usize,
             };
-
-            println!("{:#?}", claims);
 
             Ok(claims)
         } else {

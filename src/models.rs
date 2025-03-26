@@ -215,7 +215,7 @@ pub struct User {
     pub client: Option<Client>,
     pub client_id: Option<ObjectId>,
     pub is_pending: Option<bool>,
-    pub role: Option<Role>,
+    // pub role: Option<Role>,
     pub tenant_id: Option<String>,
     pub api_ket: Option<String>,
     pub failed_login_attempts: Option<i32>,
@@ -234,13 +234,13 @@ pub struct User {
     pub updated_at: Option<DateTime<Utc>>,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
-#[serde(rename_all = "camelCase")]
-pub enum Role {
-    ADMIN,
-    OPERATOR,
-    VIEWER,
-}
+// #[derive(Debug, Serialize, Deserialize, Clone)]
+// #[serde(rename_all = "camelCase")]
+// pub enum Role {
+//     ADMIN,
+//     OPERATOR,
+//     VIEWER,
+// }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]

@@ -1,7 +1,9 @@
 use super::mqtt::{publish_device_report, publish_general_report};
+use crate::handlers::websocket_handlers::websocket::WsResult;
 use crate::models::{Data, Device, Filter, Notification};
 use crate::utils::device_data_model::DeviceMessage;
 use crate::utils::utils_functions::{find_device_filter, find_workspace_with_device_id};
+use crate::ConnectionMap;
 
 use bson::oid::ObjectId;
 use mongodb::bson::doc;
@@ -10,8 +12,9 @@ use mongodb::options::FindOneOptions;
 use mongodb::{Collection, Database};
 use rumqttc::{AsyncClient, QoS};
 use std::sync::Arc;
+use tokio::sync::Mutex;
 
-pub async fn handle_entry_data(client: Arc<AsyncClient>, db: Database, message: &str) {
+pub async fn handle_entry_data(client: Arc<AsyncClient>, db: Database, ws_conns: Arc<Mutex<ConnectionMap>>, message: &str) {
     let sensor_data_result = serde_json::from_str::<DeviceMessage>(&message);
     let data_coll: Collection<Data> = db.collection("Data");
     let notification_coll: Collection<Notification> = db.collection("Collection");
@@ -203,7 +206,26 @@ pub async fn handle_entry_data(client: Arc<AsyncClient>, db: Database, message: 
                             .unwrap();
 
                         for obj in ntfy_entries {
-                            //
+                           let res = WsResult {
+                               kind: "notification".to_string(),
+                               data: serde_json::to_string(&obj).unwrap()
+                           };
+
+                           let msg = serde_json::to_string(&res).unwrap();
+
+                           // println!("sending message: {}", msg);
+                           // conns.send_message_to_client(workspace_id.to_string(), &msg).await;
+                           tokio::spawn({
+                               let conn_map = Arc::clone(&ws_conns);
+                               let msg = msg.clone();
+                               let workspace_id = workspace_id.clone();
+
+                               async move {
+                                   let conns = conn_map.lock().await;
+                                   conns.send_message_to_client(workspace_id.to_string(), &msg).await;
+                                   drop(conns);
+                               }
+                           });
                         }
                     }
                 }

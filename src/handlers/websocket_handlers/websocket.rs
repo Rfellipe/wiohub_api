@@ -3,13 +3,14 @@ use futures::stream::SplitSink;
 use futures::{SinkExt, StreamExt};
 use mongodb::Database;
 use serde::{Deserialize, Serialize};
-use tokio::sync::mpsc;
 use std::sync::Arc;
+use tokio::sync::{mpsc, Mutex};
 use warp::filters::ws::{Message, WebSocket};
+use tokio_stream::wrappers::UnboundedReceiverStream;
 
 use crate::handlers::auth_handlers::security::{decode_jwt, JWT_SECRET};
 use crate::utils::utils_models;
-use crate::{ClientsWorkspace, Clients};
+use crate::ConnectionMap;
 
 #[derive(Deserialize, Debug)]
 struct WsRequest {
@@ -17,11 +18,10 @@ struct WsRequest {
     message: String,
 }
 
-// example result structure
 #[derive(Serialize, Debug)]
 pub struct WsResult {
-    pub status: String,
-    pub response: String,
+    pub kind: String,
+    pub data: String,
 }
 
 pub async fn handle_ws_client(
@@ -29,28 +29,39 @@ pub async fn handle_ws_client(
     authorization: String,
     db: Database,
     workspaces: String,
-    clients: Clients,
-    clients_workspaces: ClientsWorkspace,
+    conns_map: Arc<Mutex<ConnectionMap>>,
 ) {
     let user_info = decode_jwt(authorization, JWT_SECRET, db.clone())
         .await
         .unwrap();
 
-    let mut conns = ConnectionMap {
-        clients,
-        clients_workspaces,
-    };
     let this_req = serde_qs::from_str::<utils_models::WebSocketQuery>(&workspaces).unwrap();
-
     let (mut tx, mut rx) = websocket.split();
-    let (client_tx, _client_rx) = mpsc::unbounded_channel();
-
+    let (client_tx, client_rx) = mpsc::unbounded_channel::<Message>();
     let client_tx_ptr = Arc::new(client_tx);
 
-    conns.add_client(user_info.client_id.as_ref().unwrap(), this_req.workspace_id.clone(), &client_tx_ptr);
+    let mut client_rx_stream = UnboundedReceiverStream::new(client_rx);
+    tokio::spawn(async move {
+        while let Some(message) = client_rx_stream.next().await {
+            if tx.send(message.clone()).await.is_err() {
+                break;
+            }
+        }
+    });
+
+    {
+        let conns = conns_map.lock().await;
+        conns
+            .add_client(
+                user_info.client_id.as_ref().unwrap(),
+                this_req.workspace_id.clone(),
+                &client_tx_ptr,
+            )
+            .await;
+    }
 
     while let Some(body) = rx.next().await {
-        let message = match body {
+        let _message = match body {
             Ok(msg) => msg,
             Err(e) => {
                 println!("error reading message on websocket: {}", e);
@@ -58,10 +69,19 @@ pub async fn handle_ws_client(
             }
         };
 
-        handle_websocket_message(message, &mut tx).await;
+        // handle_websocket_message(message, &mut tx).await;
     }
 
-    conns.remove_client(user_info.client_id.unwrap().as_str(), this_req.workspace_id, client_tx_ptr);
+    {
+        let conns = conns_map.lock().await;
+        conns
+            .remove_client(
+                user_info.client_id.unwrap().as_str(),
+                this_req.workspace_id,
+                client_tx_ptr,
+            )
+            .await;
+    }
 
     println!("client disconnected");
 }
@@ -82,69 +102,23 @@ pub async fn handle_websocket_message(
     println!("got request {} with body {}", req.kind, req.message);
 
     match req.kind.as_str() {
-        "notification" => handle_notification(&req.message),
+        "realTimeData" => handle_realtime_data(sender).await, 
         _ => println!("no"),
     }
 
     let response = serde_json::to_string(&WsResult {
-        status: "success".to_string(),
-        response: "awesome message".to_string(),
+        kind: "success".to_string(),
+        data: "awesome message".to_string(),
     })
     .unwrap();
     sender.send(Message::text(response)).await.unwrap();
 }
 
-fn handle_notification(msg: &str) {
-    println!("{}", msg);
-}
+async fn handle_realtime_data(sender: &mut SplitSink<WebSocket, Message> ) {
+    let response = serde_json::to_string(&WsResult {
+        kind: "ok".to_string(),
+        data: "activating realtime data for device".to_string()
+    }).unwrap();
 
-#[derive(Debug)]
-struct ConnectionMap {
-    clients: Clients,
-    clients_workspaces: ClientsWorkspace,
-}
-
-impl ConnectionMap {
-    fn add_client(&mut self, client_id: &str, workspaces_id: Vec<String>, client_conn: &Arc<mpsc::UnboundedSender<Message>>) {
-        self.clients
-            .lock()
-            .unwrap()
-            .entry(client_id.to_string())
-            .or_insert_with(Vec::new)
-            .push(client_conn.clone());
-
-        for workspace_id in workspaces_id {
-            self.clients_workspaces
-                .lock()
-                .unwrap()
-                .entry(workspace_id.clone())
-                .or_insert_with(Vec::new)
-                .push(client_conn.clone());
-        }
-    }
-
-    fn remove_client(
-        &mut self,
-        client_id: &str,
-        workspace_ids: Vec<String>,
-        client_conn: Arc<mpsc::UnboundedSender<Message>>,
-    ) {
-        // Remove from clients map
-        if let Some(client_connections) = self.clients.lock().unwrap().get_mut(client_id) {
-            client_connections.retain(|client_ws| !Arc::ptr_eq(client_ws, &client_conn));
-            if client_connections.is_empty() {
-                self.clients.lock().unwrap().remove(client_id);
-            }
-        }
-
-        // Remove from workspaces map
-        for workspace_id in workspace_ids {
-            if let Some(workspace_connections) = self.clients_workspaces.lock().unwrap().get_mut(&workspace_id) {
-                workspace_connections.retain(|workspace_ws| !Arc::ptr_eq(workspace_ws, &client_conn));
-                if workspace_connections.is_empty() {
-                    self.clients_workspaces.lock().unwrap().remove(&workspace_id);
-                }
-            }
-        }
-    }
+    sender.send(Message::text(response)).await.unwrap();
 }

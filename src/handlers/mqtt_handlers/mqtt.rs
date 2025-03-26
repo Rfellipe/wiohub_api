@@ -1,12 +1,18 @@
-use crate::handlers::mqtt_handlers::entry_data::handle_entry_data;
+use crate::{handlers::mqtt_handlers::entry_data::handle_entry_data, ConnectionMap};
 use mongodb::Database;
 use rumqttc::{AsyncClient, Event, EventLoop, Packet, QoS};
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
+use tokio::sync::Mutex;
 
 // eventloop: Arc<EventLoop>,
 // let eventloop = Arc::try_unwrap(eventloop);
 
-pub async fn run_mqtt(client: Arc<AsyncClient>, mut eventloop: EventLoop, db: Database) {
+pub async fn run_mqtt(
+    client: Arc<AsyncClient>,
+    mut eventloop: EventLoop,
+    db: Database,
+    ws_conns: Arc<Mutex<ConnectionMap>>,
+) {
     client
         .subscribe("entry/data", QoS::AtMostOnce)
         .await
@@ -34,8 +40,13 @@ pub async fn run_mqtt(client: Arc<AsyncClient>, mut eventloop: EventLoop, db: Da
                     let payload = String::from_utf8_lossy(&publish.payload);
                     match publish.topic.as_str() {
                         "entry/data" => {
-                            handle_entry_data(client.clone(), db.clone(), &payload.into_owned())
-                                .await
+                            handle_entry_data(
+                                client.clone(),
+                                db.clone(),
+                                ws_conns.clone(),
+                                &payload.into_owned(),
+                            )
+                            .await
                         }
                         "entry/registration" => println!("registration received"),
                         "entry/heartbeat" => println!("heartbeat received"),
