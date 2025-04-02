@@ -39,7 +39,6 @@ pub async fn handle_rejection(
 ) -> Result<impl warp::Reply, std::convert::Infallible> {
     if let Some(MongoRejection(e)) = err.find() {
         // Handle MongoDB errors
-        println!("{}", e);
         Ok(warp::reply::with_status(
             format!("MongoDB error: {}", e),
             warp::http::StatusCode::INTERNAL_SERVER_ERROR,

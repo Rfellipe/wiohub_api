@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 use utoipa::{IntoParams, ToSchema};
 
 // Query needed for client to connect to websocket
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct WebSocketQuery {
     #[serde(rename = "workspaceId")]
     pub workspace_id: Vec<String>

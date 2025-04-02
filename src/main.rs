@@ -1,146 +1,105 @@
+mod config;
 mod db;
 mod errors;
 mod handlers;
 mod models;
+mod mqtt_srv;
 mod swagger;
 mod utils;
+mod websocket_srv;
+mod logger;
 
 use crate::handlers::{
     auth_handlers::auth::auth_signin_handler,
     device_handlers::{device_data::devices_data_handler, device_status::device_status_handler},
 };
-use futures::stream::SplitSink;
+use config::Configs;
 use handlers::{
     auth_handlers::session::with_auth,
     device_handlers::{device::device, device_data::device_data_handler},
-    mqtt_handlers::mqtt::run_mqtt,
-    websocket_handlers::websocket::handle_ws_client,
+    mqtt_handlers::entry_data::handle_entry_data,
+    // websocket_handlers::websocket::{handle_ws_client, WsResult},
 };
-use rumqttc::{AsyncClient, MqttOptions};
-use std::{collections::HashMap, net::SocketAddr, sync::Arc, time::Instant};
+use mqtt_srv::MqttClient;
+use rumqttc::QoS;
+use websocket_srv::{websocket, ClientsConnections, ClientsWorkspaces};
+// use websocket_srv::WebsocketClient;
+use std::{collections::HashMap, net::SocketAddr, path::Path, sync::Arc, time::Instant};
 
 use db::get_db;
-use tokio::sync::{mpsc, Mutex};
+use log::{error, info};
 use tokio::sync::RwLock;
 use utils::utils_functions::send_to_zabbix;
 use utils::utils_models;
 use utoipa::OpenApi;
-use warp::{
-    self,
-    filters::{path::FullPath, ws::{Message, WebSocket}},
-    http::Method,
-    Filter,
-};
+use warp::{self, filters::path::FullPath, http::Method, Filter};
 use warp_rate_limit::{with_rate_limit, RateLimitConfig};
-
-type ClientId = String;
-type WorkspaceId = String;
-type Sender = Arc<mpsc::UnboundedSender<Message>>;
-// type Sender = Arc<SplitSink<WebSocket, Message>>;
-
-pub type Clients = Arc<RwLock<HashMap<ClientId, Vec<Sender>>>>;
-pub type ClientsWorkspace = Arc<RwLock<HashMap<WorkspaceId, Vec<Sender>>>>;
-
-
-#[derive(Debug, Clone)]
-pub struct ConnectionMap {
-    pub clients: Clients,
-    pub clients_workspaces: ClientsWorkspace,
-}
-
-impl ConnectionMap {
-    async fn add_client(
-        &self,
-        client_id: &str,
-        workspaces_id: Vec<String>,
-        client_conn: &Sender,
-    ) {
-        // Lock `clients` once
-        let mut clients = self.clients.write().await;
-        clients
-            .entry(client_id.to_string())
-            .or_insert_with(Vec::new)
-            .push(client_conn.clone());
-        drop(clients); // Explicitly drop write lock before acquiring another
-
-        // Lock `clients_workspaces` once
-        let mut workspaces = self.clients_workspaces.write().await;
-        for workspace_id in workspaces_id {
-            workspaces
-                .entry(workspace_id)
-                .or_insert_with(Vec::new)
-                .push(client_conn.clone());
-        }
-        drop(workspaces);
-    }
-
-    async fn remove_client(
-        &self,
-        client_id: &str,
-        workspace_ids: Vec<String>,
-        client_conn: Sender,
-    ) {
-        // Lock `clients` once
-        let mut clients = self.clients.write().await;
-        if let Some(client_connections) = clients.get_mut(client_id) {
-            client_connections.retain(|client_ws| !Arc::ptr_eq(client_ws, &client_conn));
-            if client_connections.is_empty() {
-                clients.remove(client_id);
-            }
-        }
-        drop(clients); // Explicitly drop write lock before acquiring another
-
-        // Lock `clients_workspaces` once
-        let mut workspaces = self.clients_workspaces.write().await;
-        for workspace_id in workspace_ids {
-            if let Some(workspace_connections) = workspaces.get_mut(&workspace_id) {
-                workspace_connections
-                    .retain(|workspace_ws| !Arc::ptr_eq(workspace_ws, &client_conn));
-                if workspace_connections.is_empty() {
-                    workspaces.remove(&workspace_id);
-                }
-            }
-        }
-        drop(workspaces);
-    }
-
-    async fn send_message_to_client(&self, workspace_id: String, message: &str) {
-        let msg = Message::text(message.to_string());
-
-        // Lock `clients_workspaces` for reading once
-        if let Some(connections_workspaces) = self.clients_workspaces.read().await.get(&workspace_id) {
-            for conn in connections_workspaces {
-                let _ = conn.send(msg.clone()).unwrap();
-            }
-        }
-    }
-}
 
 #[tokio::main]
 async fn main() -> mongodb::error::Result<()> {
+    logger::start_log();
+
+    let config_path = Path::new("./config.toml");
+    let configs = match Configs::load_from_file(config_path) {
+        Ok(c) => {
+            info!("Configurations loaded");
+            Arc::new(RwLock::new(c))
+        }
+        Err(e) => {
+            info!("Failed to load configurations: {}", e);
+            std::process::exit(1);
+        }
+    };
+
+    let mqtt_settings = Arc::clone(&configs).read().await.mqtt.clone();
+    let ws_settings = Arc::clone(&configs).read().await.websocket.clone();
+    let db_settings = Arc::clone(&configs).read().await.database.clone();
+
     let config = swagger::doc_config();
-    let db = get_db().await?;
+    let db = get_db(db_settings).await?;
     let db_clone = db.clone();
 
-    let mqttoptions: MqttOptions = MqttOptions::new("rumqtt-async", "127.0.0.1", 1883);
-    let (client, eventloop) = AsyncClient::new(mqttoptions, 10);
+    let server_status: Arc<RwLock<Option<i64>>> = Arc::new(RwLock::new(None));
+    let mqtt_client = MqttClient::new(mqtt_settings, server_status.clone()).await;
+    let mqtt_client_ptr = Arc::new(mqtt_client.clone());
 
-    let client = Arc::new(client);
+    let clients_workspaces: ClientsWorkspaces = Arc::new(RwLock::new(HashMap::new()));
+    let websocket_connections = Arc::new(RwLock::new(ClientsConnections { clients_workspaces }));
+    let ws_connections_clone = Arc::clone(&websocket_connections);
 
-    let mqtt_client = Arc::clone(&client);
+    mqtt_client
+        .subscribe("entry/data", QoS::AtLeastOnce)
+        .await
+        .ok();
+    mqtt_client
+        .add_topic_handler("entry/data", move |payload| {
+            let db_clone = db_clone.clone();
+            let mqtt_client_clone = Arc::clone(&mqtt_client_ptr);
+            let ws_conns = ws_connections_clone.clone();
 
-    let clients: Clients = Arc::new(RwLock::new(HashMap::new()));
-    let clients_workspaces: ClientsWorkspace = Arc::new(RwLock::new(HashMap::new()));
+            tokio::spawn(async move {
+                let handler = handle_entry_data(db_clone, payload.as_str(), ws_conns).await;
+                if let Err(e) = handler {
+                    error!("error on entry data: {}", e);
+                    let r = mqtt_client_clone
+                        .publish("entry/reports", &e.as_str(), QoS::AtLeastOnce, true)
+                        .await;
+                    if let Err(err) = r {
+                        error!("error publishing: {}", err);
+                    }
+                }
+            });
+        })
+        .await;
 
-    let conn = Arc::new(Mutex::new(ConnectionMap {
-        clients,
-        clients_workspaces,
-    }));
-    let conn_clone = conn.clone();
-
-    tokio::spawn(async move {
-        run_mqtt(mqtt_client, eventloop, db_clone, conn_clone).await;
-    });
+    let mqtt_client_ptr = Arc::new(mqtt_client.clone());
+    let ws = websocket(ws_settings, websocket_connections, mqtt_client_ptr.clone()).await;
+    if let Err(e) = ws {
+        error!("error starting websocket: {:#?}", e);
+        std::process::exit(1);
+    } else {
+        info!("Websocket started");
+    };
 
     // 60 request per 60 seconds
     let public_routes_rate_limit = RateLimitConfig::max_per_window(5, 5 * 60);
@@ -197,24 +156,6 @@ async fn main() -> mongodb::error::Result<()> {
         .and(with_db(db.clone()))
         .and_then(auth_signin_handler);
 
-    let web_socket = warp::path("websocket")
-        .and(warp::ws())
-        .and(with_auth())
-        .and(with_db(db.clone()))
-        .and(warp::query::raw())
-        .and(with_conn_maps(conn))
-        .map(
-            |ws: warp::ws::Ws,
-             authorization: String,
-             db: mongodb::Database,
-             workspace_id: String,
-             conn: Arc<Mutex<ConnectionMap>>| {
-                ws.on_upgrade(move |websocket| {
-                    handle_ws_client(websocket, authorization, db, workspace_id, conn)
-                })
-            },
-        );
-
     let routes = root
         .or(api_doc)
         .or(swagger_ui)
@@ -223,11 +164,12 @@ async fn main() -> mongodb::error::Result<()> {
         .or(device_controller_route)
         .or(devices_controller_route)
         .or(devices_status_route)
-        .or(web_socket)
+        // .or(web_socket)
         .with(with_cors())
-        .recover(errors::handle_rejection);
-        // .with(warp::wrap_fn(monitoring_wrapper));
+        .recover(errors::handle_rejection)
+        .with(warp::wrap_fn(monitoring_wrapper));
 
+    info!("starting http srv...");
     warp::serve(routes).run(([127, 0, 0, 1], 3030)).await;
 
     Ok(())
@@ -248,11 +190,11 @@ fn with_cors() -> warp::filters::cors::Cors {
         .build()
 }
 
-fn with_conn_maps(
-    conn: Arc<Mutex<ConnectionMap>>,
-) -> impl Filter<Extract = (Arc<Mutex<ConnectionMap>>,), Error = std::convert::Infallible> + Clone {
-    warp::any().map(move || conn.clone())
-}
+// fn with_conn_maps(
+//     conn: Arc<Mutex<ConnectionMap>>,
+// ) -> impl Filter<Extract = (Arc<Mutex<ConnectionMap>>,), Error = std::convert::Infallible> + Clone {
+//     warp::any().map(move || conn.clone())
+// }
 
 fn monitoring_wrapper<F, T>(
     filter: F,

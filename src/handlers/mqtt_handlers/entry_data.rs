@@ -1,20 +1,19 @@
-use super::mqtt::{publish_device_report, publish_general_report};
-use crate::handlers::websocket_handlers::websocket::WsResult;
+use std::sync::Arc;
+
 use crate::models::{Data, Device, Filter, Notification};
 use crate::utils::device_data_model::DeviceMessage;
 use crate::utils::utils_functions::{find_device_filter, find_workspace_with_device_id};
-use crate::ConnectionMap;
+use crate::websocket_srv::{ClientsConnections, WsResult};
 
 use bson::oid::ObjectId;
 use mongodb::bson::doc;
 use mongodb::bson::DateTime;
 use mongodb::options::FindOneOptions;
 use mongodb::{Collection, Database};
-use rumqttc::{AsyncClient, QoS};
-use std::sync::Arc;
-use tokio::sync::Mutex;
+use tokio::sync::RwLock;
+use log::info;
 
-pub async fn handle_entry_data(client: Arc<AsyncClient>, db: Database, ws_conns: Arc<Mutex<ConnectionMap>>, message: &str) {
+pub async fn handle_entry_data(db: Database, message: &str, ws_conns: Arc<RwLock<ClientsConnections>>) -> Result<(), String> {
     let sensor_data_result = serde_json::from_str::<DeviceMessage>(&message);
     let data_coll: Collection<Data> = db.collection("Data");
     let notification_coll: Collection<Notification> = db.collection("Collection");
@@ -45,18 +44,18 @@ pub async fn handle_entry_data(client: Arc<AsyncClient>, db: Database, ws_conns:
 
                     match locations.is_empty() {
                         true => {
-                            publish_device_report(
-                                client.clone(),
-                                device.id.to_string().as_str(),
-                                QoS::ExactlyOnce,
-                                format!(
-                                    "No location found for the device: {}",
-                                    &sensor_data.device_id
-                                )
-                                .as_str(),
-                            )
-                            .await;
-                            return;
+                            // publish_device_report(
+                            //     client.clone(),
+                            //     device.id.to_string().as_str(),
+                            //     QoS::ExactlyOnce,
+                            //     format!(
+                            //         "No location found for the device: {}",
+                            //         &sensor_data.device_id
+                            //     )
+                            //     .as_str(),
+                            // )
+                            // .await;
+                            return Err(format!("No location found for the device: {}", &sensor_data.device_id));
                         }
                         false => {
                             for location in locations {
@@ -73,6 +72,7 @@ pub async fn handle_entry_data(client: Arc<AsyncClient>, db: Database, ws_conns:
                         if let Ok(Some(filter)) =
                             find_device_filter(sensor_type.clone(), device.id, db.clone()).await
                         {
+                            info!("current sensor: {}", sensor_type);
                             if let Some(min) = sensor.min {
                                 if !check_limits(min.value, filter.clone()) {
                                     generate_log_and_notification(
@@ -121,7 +121,6 @@ pub async fn handle_entry_data(client: Arc<AsyncClient>, db: Database, ws_conns:
                                     &mut data_entries,
                                 );
                             }
-
                             if let Some(avg) = sensor.average {
                                 // let timestamp = DateTime::from_millis(sensor_data.timestamp);
                                 if !check_limits(avg, filter.clone()) {
@@ -148,7 +147,6 @@ pub async fn handle_entry_data(client: Arc<AsyncClient>, db: Database, ws_conns:
                                     &mut data_entries,
                                 );
                             }
-
                             if let Some(values) = sensor.values {
                                 for entry in values {
                                     if !check_limits(entry.value, filter.clone()) {
@@ -178,17 +176,11 @@ pub async fn handle_entry_data(client: Arc<AsyncClient>, db: Database, ws_conns:
                             }
                         } else {
                             let err = format!(
-                                "No filter found for this sensor from the device: {}",
+                                "No filter '{}' found for this sensor from the device: {}",
+                                sensor_type,
                                 device.id.to_string()
                             );
-                            publish_device_report(
-                                client.clone(),
-                                device.id.to_string().as_str(),
-                                QoS::AtLeastOnce,
-                                err.as_str(),
-                            )
-                            .await;
-                            eprintln!("{}", err);
+                            // return Err(err);
                         }
                     }
 
@@ -207,40 +199,44 @@ pub async fn handle_entry_data(client: Arc<AsyncClient>, db: Database, ws_conns:
 
                         for obj in ntfy_entries {
                            let res = WsResult {
-                               kind: "notification".to_string(),
+                               type_: "notification".to_string(),
                                data: serde_json::to_string(&obj).unwrap()
                            };
 
                            let msg = serde_json::to_string(&res).unwrap();
 
+                           let conns = ws_conns.read().await;
+                           conns.send_message(workspace_id.to_string(), &msg).await;
+
                            // println!("sending message: {}", msg);
                            // conns.send_message_to_client(workspace_id.to_string(), &msg).await;
-                           tokio::spawn({
-                               let conn_map = Arc::clone(&ws_conns);
-                               let msg = msg.clone();
-                               let workspace_id = workspace_id.clone();
+                           // tokio::spawn({
+                           //     let conn_map = Arc::clone(&ws_conns);
+                           //     let msg = msg.clone();
+                           //     let workspace_id = workspace_id.clone();
 
-                               async move {
-                                   let conns = conn_map.lock().await;
-                                   conns.send_message_to_client(workspace_id.to_string(), &msg).await;
-                                   drop(conns);
-                               }
-                           });
+                           //     async move {
+                           //         let conns = conn_map.lock().await;
+                           //         conns.send_message_to_client(workspace_id.to_string(), &msg).await;
+                           //         drop(conns);
+                           //     }
+                           // });
                         }
                     }
+
+                    Ok(())
                 }
                 Ok(None) => {
-                    publish_general_report(client.clone(), QoS::AtMostOnce, "Error finding device")
-                        .await;
+                    Err("Error finding device".to_string())
                 }
                 Err(err) => {
-                    publish_general_report(client.clone(), QoS::AtMostOnce, "Unknown Error").await;
-                    eprintln!("Mongo Error: {:?}", err);
+                    let err = format!("Mongo Error: {:?}", err);
+                    Err(err)
                 }
             }
         }
         Err(_) => {
-            publish_general_report(client.clone(), QoS::AtMostOnce, "Error finding device").await;
+            Err("Error finding device".to_string())
         }
     }
 }

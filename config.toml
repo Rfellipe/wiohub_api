@@ -1,0 +1,14 @@
+[mqtt]
+broker = "127.0.0.1"
+port = 1883
+backup_dir = "/tmp/api/mqtt_backup"
+username = "synchub_api"
+password = "123"
+keep_alive = 10
+
+[websocket]
+server = "127.0.0.1:3031"
+
+[database]
+uri = "mongodb://localhost:27017/"
+db = "wiohub"
