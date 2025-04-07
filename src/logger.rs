@@ -7,7 +7,4 @@ pub fn start_log() {
     builder.format(|buf, record| {
         writeln!(buf, "{}: {}: {}", buf.timestamp(), record.level(), record.args())
     }).filter_level(LevelFilter::Info).init();
-
-    log::info!("Visible due to INFO level setting.");
-    log::debug!("Invisible due to INFO level setting.");
 }

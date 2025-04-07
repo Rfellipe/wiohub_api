@@ -222,6 +222,7 @@ pub async fn handle_entry_data(db: Database, message: &str, ws_conns: Arc<RwLock
                            //     }
                            // });
                         }
+                    let locations = workspace[0].get_array("locations").unwrap();
                     }
 
                     Ok(())

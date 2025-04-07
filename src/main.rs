@@ -2,12 +2,12 @@ mod config;
 mod db;
 mod errors;
 mod handlers;
+mod logger;
 mod models;
 mod mqtt_srv;
 mod swagger;
 mod utils;
 mod websocket_srv;
-mod logger;
 
 use crate::handlers::{
     auth_handlers::auth::auth_signin_handler,
@@ -17,14 +17,12 @@ use config::Configs;
 use handlers::{
     auth_handlers::session::with_auth,
     device_handlers::{device::device, device_data::device_data_handler},
-    mqtt_handlers::entry_data::handle_entry_data,
-    // websocket_handlers::websocket::{handle_ws_client, WsResult},
+    mqtt_handlers::{entry_data::handle_entry_data, real_time_data::handle_real_time_data},
 };
 use mqtt_srv::MqttClient;
 use rumqttc::QoS;
-use websocket_srv::{websocket, ClientsConnections, ClientsWorkspaces};
-// use websocket_srv::WebsocketClient;
 use std::{collections::HashMap, net::SocketAddr, path::Path, sync::Arc, time::Instant};
+use websocket_srv::{websocket, ClientsConnections, ClientsWorkspaces};
 
 use db::get_db;
 use log::{error, info};
@@ -92,6 +90,32 @@ async fn main() -> mongodb::error::Result<()> {
         })
         .await;
 
+    let db_clone = db.clone();
+    let ws_connections_clone = Arc::clone(&websocket_connections);
+    mqtt_client
+        .subscribe("sensors/realtime/data", QoS::AtLeastOnce)
+        .await
+        .ok();
+    mqtt_client
+        .add_topic_handler("sensors/realtime/data", move |payload| {
+            let db_clone = db_clone.clone();
+            let ws_conns = ws_connections_clone.clone();
+
+            tokio::spawn(async move {
+                let _handler = handle_real_time_data(db_clone, &payload, ws_conns).await;
+                // if let Err(e) = handler {
+                //     error!("error on entry data: {}", e);
+                //     let r = mqtt_client_clone
+                //         .publish("entry/reports", &e.as_str(), QoS::AtLeastOnce, true)
+                //         .await;
+                //     if let Err(err) = r {
+                //         error!("error publishing: {}", err);
+                //     }
+                // }
+            });
+        })
+        .await;
+
     let mqtt_client_ptr = Arc::new(mqtt_client.clone());
     let ws = websocket(ws_settings, websocket_connections, mqtt_client_ptr.clone()).await;
     if let Err(e) = ws {
@@ -128,7 +152,6 @@ async fn main() -> mongodb::error::Result<()> {
     let device_controller_route = warp::path!("device" / "data" / String)
         .and(warp::get())
         .and(with_auth())
-        // .and(warp::header::header("authorization"))
         .and(warp::query::<utils_models::DeviceControllerQueries>())
         .and(with_db(db.clone()))
         .and_then(device_data_handler);
@@ -136,7 +159,6 @@ async fn main() -> mongodb::error::Result<()> {
     let devices_controller_route = warp::path!("devices" / "data")
         .and(warp::get())
         .and(with_auth())
-        // .and(warp::header::header("authorization"))
         .and(warp::query::<utils_models::DeviceControllerQueries>())
         .and(with_db(db.clone()))
         .and_then(devices_data_handler);
@@ -144,7 +166,6 @@ async fn main() -> mongodb::error::Result<()> {
     let devices_status_route = warp::path!("devices" / "status")
         .and(warp::get())
         .and(with_auth())
-        // .and(warp::header::header("authorization"))
         .and(warp::query::<utils_models::DeviceStatusQueries>())
         .and(with_db(db.clone()))
         .and_then(device_status_handler);
@@ -164,7 +185,6 @@ async fn main() -> mongodb::error::Result<()> {
         .or(device_controller_route)
         .or(devices_controller_route)
         .or(devices_status_route)
-        // .or(web_socket)
         .with(with_cors())
         .recover(errors::handle_rejection)
         .with(warp::wrap_fn(monitoring_wrapper));
@@ -189,12 +209,6 @@ fn with_cors() -> warp::filters::cors::Cors {
         .allow_credentials(true)
         .build()
 }
-
-// fn with_conn_maps(
-//     conn: Arc<Mutex<ConnectionMap>>,
-// ) -> impl Filter<Extract = (Arc<Mutex<ConnectionMap>>,), Error = std::convert::Infallible> + Clone {
-//     warp::any().map(move || conn.clone())
-// }
 
 fn monitoring_wrapper<F, T>(
     filter: F,
