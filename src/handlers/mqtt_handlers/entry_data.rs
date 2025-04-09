@@ -44,17 +44,6 @@ pub async fn handle_entry_data(db: Database, message: &str, ws_conns: Arc<RwLock
 
                     match locations.is_empty() {
                         true => {
-                            // publish_device_report(
-                            //     client.clone(),
-                            //     device.id.to_string().as_str(),
-                            //     QoS::ExactlyOnce,
-                            //     format!(
-                            //         "No location found for the device: {}",
-                            //         &sensor_data.device_id
-                            //     )
-                            //     .as_str(),
-                            // )
-                            // .await;
                             return Err(format!("No location found for the device: {}", &sensor_data.device_id));
                         }
                         false => {
@@ -122,9 +111,7 @@ pub async fn handle_entry_data(db: Database, message: &str, ws_conns: Arc<RwLock
                                 );
                             }
                             if let Some(avg) = sensor.average {
-                                // let timestamp = DateTime::from_millis(sensor_data.timestamp);
                                 if !check_limits(avg, filter.clone()) {
-                                    //generate_log_and_notification(max.value, max.timestamp, sensor_type, "maximo".to_string(), wo, device_id, notification_entries);
                                     generate_log_and_notification(
                                         avg,
                                         sensor_data.timestamp,
@@ -150,7 +137,6 @@ pub async fn handle_entry_data(db: Database, message: &str, ws_conns: Arc<RwLock
                             if let Some(values) = sensor.values {
                                 for entry in values {
                                     if !check_limits(entry.value, filter.clone()) {
-                                        // generate_log_and_notification(value, timestamp, sensor_type, limit, workspace_id, device_id, notification_entries);
                                         generate_log_and_notification(
                                             entry.value,
                                             entry.timestamp,
@@ -175,11 +161,13 @@ pub async fn handle_entry_data(db: Database, message: &str, ws_conns: Arc<RwLock
                                 }
                             }
                         } else {
-                            let err = format!(
-                                "No filter '{}' found for this sensor from the device: {}",
-                                sensor_type,
-                                device.id.to_string()
-                            );
+                            // TODO: Handle when the device doesn't have a filter
+                            // configured for the current sensor
+                            // let err = format!(
+                            //     "No filter '{}' found for this sensor from the device: {}",
+                            //     sensor_type,
+                            //     device.id.to_string()
+                            // );
                             // return Err(err);
                         }
                     }
@@ -207,22 +195,7 @@ pub async fn handle_entry_data(db: Database, message: &str, ws_conns: Arc<RwLock
 
                            let conns = ws_conns.read().await;
                            conns.send_message(workspace_id.to_string(), &msg).await;
-
-                           // println!("sending message: {}", msg);
-                           // conns.send_message_to_client(workspace_id.to_string(), &msg).await;
-                           // tokio::spawn({
-                           //     let conn_map = Arc::clone(&ws_conns);
-                           //     let msg = msg.clone();
-                           //     let workspace_id = workspace_id.clone();
-
-                           //     async move {
-                           //         let conns = conn_map.lock().await;
-                           //         conns.send_message_to_client(workspace_id.to_string(), &msg).await;
-                           //         drop(conns);
-                           //     }
-                           // });
                         }
-                    let locations = workspace[0].get_array("locations").unwrap();
                     }
 
                     Ok(())
@@ -237,7 +210,7 @@ pub async fn handle_entry_data(db: Database, message: &str, ws_conns: Arc<RwLock
             }
         }
         Err(_) => {
-            Err("Error finding device".to_string())
+            Err("Wrong data".to_string())
         }
     }
 }

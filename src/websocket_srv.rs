@@ -34,7 +34,6 @@ pub type ClientsWorkspaces = Arc<RwLock<HashMap<WorkspaceId, Vec<Tx>>>>;
 struct WsRequest {
     #[serde(rename = "type")]
     type_: String,
-    // message: String,
 }
 
 #[derive(Serialize, Debug)]
@@ -102,7 +101,8 @@ async fn handle_incoming_messages(
                     let req: WsRequest = serde_json::from_str(text).unwrap();
 
                     match req.type_.as_str() {
-                        "realTimeData" => start_stop_realtime_data(text, mqtt_client.clone()).await, 
+                        "realTimeData" => start_stop_realtime_data(text, mqtt_client.clone()).await,
+                        //"entry/heartbeat" ,
                         _ => warn!("no"), 
                     }
                 }

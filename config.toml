@@ -7,7 +7,7 @@ password = "123"
 keep_alive = 10
 
 [websocket]
-server = "127.0.0.1:3031"
+server = "0.0.0.0:3031"
 
 [database]
 uri = "mongodb://localhost:27017/"

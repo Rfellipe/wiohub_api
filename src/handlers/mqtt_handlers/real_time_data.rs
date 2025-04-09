@@ -5,7 +5,7 @@ use mongodb::{options::FindOneOptions, Collection, Database};
 use tokio::sync::RwLock;
 
 use crate::{
-    models::{Data, Device, Notification},
+    models::Device,
     utils::{device_data_model::DeviceMessage, utils_functions::find_workspace_with_device_id},
     websocket_srv::ClientsConnections,
 };

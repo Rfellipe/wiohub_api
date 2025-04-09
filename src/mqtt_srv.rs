@@ -1,26 +1,22 @@
 use log::{error, info, warn};
-use rumqttc::{AsyncClient, Event, MqttOptions, Packet, QoS, Transport, TlsConfiguration};
-use serde::{Serialize, Deserialize};
-use std::time::Duration;
-use tokio::task;
-use std::fs::File;
+use rumqttc::{AsyncClient, Event, MqttOptions, Packet, QoS, TlsConfiguration, Transport};
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::sync::Arc;
-use tokio::sync::RwLock;
-use tokio::sync::Mutex;
+use std::fs::File;
 use std::io::Read;
-use tokio::time::{sleep, interval};
-use std::path::PathBuf;
-use tokio::io::AsyncReadExt;
-
-use tokio::fs;
-use tokio::io::AsyncWriteExt;
-
-// use std::fs::{self, OpenOptions};
 use std::io::{self};
+use std::path::PathBuf;
+use std::sync::Arc;
+use std::time::Duration;
+use tokio::fs;
+use tokio::io::AsyncReadExt;
+use tokio::io::AsyncWriteExt;
+use tokio::sync::Mutex;
+use tokio::sync::RwLock;
+use tokio::task;
+use tokio::time::{interval, sleep};
 
 use crate::config::MqttConfig;
-// use crate::hardware;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 struct BackupData<T> {
@@ -35,7 +31,7 @@ pub struct MqttClient {
     topic_handlers: Arc<Mutex<HashMap<String, Box<dyn FnMut(String) + Send + Sync + 'static>>>>,
     disconnected: Arc<Mutex<bool>>,
     server_status: Arc<RwLock<Option<i64>>>, // timestamp do último status do servidor
-    server_status_timeout: i64
+    server_status_timeout: i64,
 }
 
 impl MqttClient {
@@ -47,7 +43,7 @@ impl MqttClient {
         let mut options = MqttOptions::new("syncos", config.broker, config.port);
         options.set_keep_alive(Duration::from_secs(config.keep_alive.into()));
         options.set_clean_session(false);
-        
+
         // options.set_pending_throttle(duration::from_secs(1));
         // options.set_reconnect_delay(Duration::from_secs(5), Duration::from_secs(60));
 
@@ -57,25 +53,28 @@ impl MqttClient {
         }
 
         // TLS configuration if SSL certificates are provided
-        if let (Some(ca_cert), Some(client_cert), Some(client_key)) = 
-            (&config.ca_cert, &config.client_cert, &config.client_key) {
+        if let (Some(ca_cert), Some(client_cert), Some(client_key)) =
+            (&config.ca_cert, &config.client_cert, &config.client_key)
+        {
             let ca = load_certificate(ca_cert);
             let client_cert = load_certificate(client_cert);
             let client_key = load_certificate(client_key);
-                
+
             let tls_config = TlsConfiguration::Simple {
                 ca,
                 alpn: None,
                 client_auth: Some((client_cert, client_key)),
             };
-        
+
             options.set_transport(Transport::tls_with_config(tls_config));
         }
 
         let (client, mut eventloop) = AsyncClient::new(options, 250);
 
         // Initialize topic handlers HashMap
-        let topic_handlers: Arc<Mutex<HashMap<String, Box<dyn FnMut(String) + Send + Sync + 'static>>>> = Arc::new(Mutex::new(HashMap::new())); 
+        let topic_handlers: Arc<
+            Mutex<HashMap<String, Box<dyn FnMut(String) + Send + Sync + 'static>>>,
+        > = Arc::new(Mutex::new(HashMap::new()));
 
         // Clone topic_handlers for the task
         let task_topic_handlers = Arc::clone(&topic_handlers);
@@ -87,7 +86,7 @@ impl MqttClient {
 
         let server_status_timeout = match config.server_status_timeout {
             Some(timeout) => timeout * 1000, // to milliseconds
-            None => 180 * 1000 // 3 minutes
+            None => 180 * 1000,              // 3 minutes
         };
 
         let mqtt_client = MqttClient {
@@ -96,7 +95,7 @@ impl MqttClient {
             topic_handlers,
             disconnected,
             server_status,
-            server_status_timeout
+            server_status_timeout,
         };
 
         let mqtt_client_clone = mqtt_client.clone();
@@ -125,7 +124,10 @@ impl MqttClient {
                             let topic = topic.clone();
                             tokio::spawn(async move {
                                 info!("Reinscrevendo no tópico: {}", topic);
-                                if let Err(e) = client.subscribe(topic.clone(), rumqttc::QoS::AtLeastOnce).await {
+                                if let Err(e) = client
+                                    .subscribe(topic.clone(), rumqttc::QoS::AtLeastOnce)
+                                    .await
+                                {
                                     error!("Failed to subscribe to topic '{}': {}", topic, e);
                                 }
                             });
@@ -156,7 +158,13 @@ impl MqttClient {
         mqtt_client
     }
 
-    pub async fn publish<T>(&self, topic: &str, payload: &T, qos: QoS, backup: bool) -> Result<(), String>
+    pub async fn publish<T>(
+        &self,
+        topic: &str,
+        payload: &T,
+        qos: QoS,
+        backup: bool,
+    ) -> Result<(), String>
     where
         T: Serialize + Clone,
     {
@@ -166,13 +174,16 @@ impl MqttClient {
         // timestamp do último status do servidor
         let server_status = match self.server_status.read().await.clone() {
             Some(status) => status,
-            None => 0
+            None => 0,
         };
-        let server_status_timeout = self.server_status_timeout;
+        // let server_status_timeout = self.server_status_timeout;
         let now = chrono::Utc::now().timestamp_millis();
 
         // info!("is_disconnected: {}", *is_disconnected);
-        warn!("Resend task: disconnected: {}, server_status: {:?}, now: {} : last: ", *is_disconnected, server_status, now);
+        warn!(
+            "Resend task: disconnected: {}, server_status: {:?}, now: {} : last: ",
+            *is_disconnected, server_status, now
+        );
 
         let payload_str = match serde_json::to_string(payload) {
             Ok(payload) => payload,
@@ -181,8 +192,6 @@ impl MqttClient {
                 return Err(format!("Falha ao serializar payload para JSON: {}", e));
             }
         };
-
-        
 
         // verifica se esta desconectado e se o timestamp do servidor é maior que 3 minutos
         // if server_status == 0 || ((now - server_status) > server_status_timeout) || *is_disconnected {
@@ -194,11 +203,15 @@ impl MqttClient {
         //     return Err("Connection with broker is not established".to_string());
         // }
 
-        match self.client.publish(topic, qos, false, payload_str.clone()).await {
+        match self
+            .client
+            .publish(topic, qos, false, payload_str.clone())
+            .await
+        {
             Ok(_) => {
                 info!("Data sent successfully to topic '{}'", topic);
                 Ok(())
-            },
+            }
             Err(e) => {
                 error!("Failed to send data to topic '{}': {}", topic, e);
 
@@ -231,46 +244,72 @@ impl MqttClient {
         // Verifica e cria o diretório, se necessário
         if !self.backup_dir.exists() {
             if let Err(e) = fs::create_dir_all(&self.backup_dir).await {
-                error!("Failed to create backup directory '{}': {}", self.backup_dir.display(), e);
-                return Err(io::Error::new(io::ErrorKind::Other, format!("Failed to create backup directory: {}", e)));
+                error!(
+                    "Failed to create backup directory '{}': {}",
+                    self.backup_dir.display(),
+                    e
+                );
+                return Err(io::Error::new(
+                    io::ErrorKind::Other,
+                    format!("Failed to create backup directory: {}", e),
+                ));
             }
         }
-    
+
         // Cria o conteúdo do backup manualmente
         let backup_data = BackupData {
             topic: topic.to_string(),
             payload,
         };
-    
+
         // Define o nome do arquivo de backup
-        let backup_file = self
-            .backup_dir
-            .join(format!("backup_{}.json", chrono::Utc::now().timestamp_millis()));
+        let backup_file = self.backup_dir.join(format!(
+            "backup_{}.json",
+            chrono::Utc::now().timestamp_millis()
+        ));
 
         let backup_data = match serde_json::to_string(&backup_data) {
             Ok(data) => data,
             Err(e) => {
                 error!("Failed to serialize backup data: {}", e);
-                return Err(io::Error::new(io::ErrorKind::Other, format!("Failed to serialize backup data: {}", e)));
+                return Err(io::Error::new(
+                    io::ErrorKind::Other,
+                    format!("Failed to serialize backup data: {}", e),
+                ));
             }
         };
-    
+
         // Abre o arquivo para escrita e grava o conteúdo
         match fs::File::create(&backup_file).await {
             Ok(mut file) => {
                 if let Err(e) = file.write_all(backup_data.as_bytes()).await {
-                    error!("Failed to write data to backup file '{}': {}", backup_file.display(), e);
-                    return Err(io::Error::new(io::ErrorKind::Other, format!("Failed to write data: {}", e)));
+                    error!(
+                        "Failed to write data to backup file '{}': {}",
+                        backup_file.display(),
+                        e
+                    );
+                    return Err(io::Error::new(
+                        io::ErrorKind::Other,
+                        format!("Failed to write data: {}", e),
+                    ));
                 }
                 info!(
                     "Backup created for data on topic '{}', file: '{}'",
-                    topic, backup_file.display()
+                    topic,
+                    backup_file.display()
                 );
                 Ok(())
             }
             Err(e) => {
-                error!("Failed to open backup file '{}': {}", backup_file.display(), e);
-                Err(io::Error::new(io::ErrorKind::Other, format!("Failed to open backup file: {}", e)))
+                error!(
+                    "Failed to open backup file '{}': {}",
+                    backup_file.display(),
+                    e
+                );
+                Err(io::Error::new(
+                    io::ErrorKind::Other,
+                    format!("Failed to open backup file: {}", e),
+                ))
             }
         }
     }
@@ -300,11 +339,19 @@ impl MqttClient {
 
                 warn!(
                     "Resend task: disconnected: {}, server_status: {}, now: {}, last: {}",
-                    disconnected_value, server_status_value, now, (now - server_status_value)
+                    disconnected_value,
+                    server_status_value,
+                    now,
+                    (now - server_status_value)
                 );
 
-                if server_status_value == 0 || (now - server_status_value > server_status_timeout) || disconnected_value {
-                    warn!("Connection with broker is not established. Skipping backup data resend.");
+                if server_status_value == 0
+                    || (now - server_status_value > server_status_timeout)
+                    || disconnected_value
+                {
+                    warn!(
+                        "Connection with broker is not established. Skipping backup data resend."
+                    );
                     tokio::time::sleep(Duration::from_secs(5)).await;
                     continue;
                 }
@@ -350,7 +397,11 @@ async fn resend_backup_data(client: &AsyncClient, backup_dir: &PathBuf) -> io::R
             let (topic, payload) = match serde_json::from_str::<BackupData<String>>(&contents) {
                 Ok(data) => (data.topic, data.payload),
                 Err(e) => {
-                    error!("Failed to deserialize backup data from file '{}': {}", path.display(), e);
+                    error!(
+                        "Failed to deserialize backup data from file '{}': {}",
+                        path.display(),
+                        e
+                    );
                     continue;
                 }
             };
@@ -358,7 +409,10 @@ async fn resend_backup_data(client: &AsyncClient, backup_dir: &PathBuf) -> io::R
             tokio::time::sleep(Duration::from_secs(10)).await;
 
             // Tentar reenviar os dados
-            match client.publish(&topic, QoS::ExactlyOnce, false, payload.clone()).await {
+            match client
+                .publish(&topic, QoS::ExactlyOnce, false, payload.clone())
+                .await
+            {
                 Ok(_) => {
                     info!("Successfully resent data for topic '{}'", topic);
                     if let Err(e) = fs::remove_file(&path).await {
@@ -378,6 +432,7 @@ async fn resend_backup_data(client: &AsyncClient, backup_dir: &PathBuf) -> io::R
 fn load_certificate(path: &str) -> Vec<u8> {
     let mut file = File::open(path).expect("Failed to open certificate file");
     let mut buffer = Vec::new();
-    file.read_to_end(&mut buffer).expect("Failed to read certificate file");
+    file.read_to_end(&mut buffer)
+        .expect("Failed to read certificate file");
     buffer
 }

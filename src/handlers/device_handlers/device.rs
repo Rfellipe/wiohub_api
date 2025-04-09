@@ -32,7 +32,7 @@ pub async fn device(
     let location_id = ObjectId::parse_str(body.location).unwrap();
     let client_id = ObjectId::parse_str(user_info.client_id.unwrap()).unwrap();
 
-    let point = r#"{"latitude": }"#;
+    let point = r#"{"latitude":"0","longitude":"0"}"#;
     let new_device = doc! {
         "name": body.name,
         "type": body.device_type,
