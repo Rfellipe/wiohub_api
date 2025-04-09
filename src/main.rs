@@ -18,8 +18,7 @@ use handlers::{
     auth_handlers::session::with_auth,
     device_handlers::{device::device, device_data::device_data_handler},
     mqtt_handlers::{
-        entry_data::handle_entry_data, handle_device_registration::handle_device_registration,
-        real_time_data::handle_real_time_data,
+        entry_data::handle_entry_data, handle_device_registration::handle_device_registration, handle_heartbeats::{read_device_heartbeat, read_device_threads_heartbeat}, real_time_data::handle_real_time_data
     },
 };
 use mqtt_srv::MqttClient;
@@ -95,6 +94,54 @@ async fn main() -> mongodb::error::Result<()> {
     let db_clone = db.clone();
     let mqtt_client_ptr = Arc::new(mqtt_client.clone());
     mqtt_client
+        .subscribe("entry/heartbeat", QoS::AtLeastOnce)
+        .await
+        .ok();
+    mqtt_client.add_topic_handler("entry/heartbeat", move |payload| {
+        let db_clone = db_clone.clone();
+        let mqtt_client_clone = Arc::clone(&mqtt_client_ptr);
+
+        tokio::spawn(async move {
+            let handler = read_device_heartbeat(&payload, db_clone).await;
+            if let Err(e) = handler {
+                error!("error on entry data: {}", e);
+                let r = mqtt_client_clone
+                    .publish("entry/reports", &e.as_str(), QoS::AtLeastOnce, true)
+                    .await;
+                if let Err(err) = r {
+                    error!("error publishing: {}", err);
+                }
+            }
+        });
+    }).await;
+
+    let db_clone = db.clone();
+    let mqtt_client_ptr = Arc::new(mqtt_client.clone());
+    mqtt_client
+        .subscribe("entry/heartbeat/threads", QoS::AtLeastOnce)
+        .await
+        .ok();
+    mqtt_client.add_topic_handler("entry/heartbeat/threads", move |payload| {
+        let db_clone = db_clone.clone();
+        let mqtt_client_clone = Arc::clone(&mqtt_client_ptr);
+
+        tokio::spawn(async move {
+            let handler = read_device_threads_heartbeat(&payload, db_clone).await;
+            if let Err(e) = handler {
+                error!("error on entry data: {}", e);
+                let r = mqtt_client_clone
+                    .publish("entry/reports", &e.as_str(), QoS::AtLeastOnce, true)
+                    .await;
+                if let Err(err) = r {
+                    error!("error publishing: {}", err);
+                }
+            }
+        });
+    }).await;
+
+    let db_clone = db.clone();
+    let mqtt_client_ptr = Arc::new(mqtt_client.clone());
+    mqtt_client
         .subscribe("entry/data", QoS::AtLeastOnce)
         .await
         .ok();
@@ -121,6 +168,7 @@ async fn main() -> mongodb::error::Result<()> {
 
     let db_clone = db.clone();
     let ws_connections_clone = Arc::clone(&websocket_connections);
+    let mqtt_client_ptr = Arc::new(mqtt_client.clone());
     mqtt_client
         .subscribe("sensors/realtime/data", QoS::AtLeastOnce)
         .await
@@ -129,9 +177,10 @@ async fn main() -> mongodb::error::Result<()> {
         .add_topic_handler("sensors/realtime/data", move |payload| {
             let db_clone = db_clone.clone();
             let ws_conns = ws_connections_clone.clone();
+            let mqtt_client_clone = Arc::clone(&mqtt_client_ptr);
 
             tokio::spawn(async move {
-                let _handler = handle_real_time_data(db_clone, &payload, ws_conns).await;
+                let handler = handle_real_time_data(db_clone, &payload, ws_conns).await;
                 if let Err(e) = handler {
                     error!("error on entry data: {}", e);
                     let r = mqtt_client_clone
