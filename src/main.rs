@@ -195,7 +195,8 @@ async fn main() -> mongodb::error::Result<()> {
         .await;
 
     let mqtt_client_ptr = Arc::new(mqtt_client.clone());
-    let ws = websocket(ws_settings, websocket_connections, mqtt_client_ptr.clone()).await;
+    let db_clone = db.clone();
+    let ws = websocket(ws_settings, websocket_connections, mqtt_client_ptr.clone(), db_clone).await;
     if let Err(e) = ws {
         error!("error starting websocket: {:#?}", e);
         std::process::exit(1);

@@ -1,14 +1,15 @@
+use futures::FutureExt;
 use futures::{stream::SplitSink, SinkExt};
 use futures_channel::mpsc::{unbounded, UnboundedReceiver, UnboundedSender};
 use futures_util::StreamExt;
+use log::{error, info, warn};
+use mongodb::Database;
 use serde::{Deserialize, Serialize};
-use std::{
-    collections::HashMap,
-    io::Error as IoError,
-    sync::Arc,
-};
+use tokio_tungstenite::tungstenite::protocol::CloseFrame;
+use std::{collections::HashMap, io::Error as IoError, sync::Arc};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::RwLock;
+use tokio_tungstenite::tungstenite::http;
 use tokio_tungstenite::{
     accept_hdr_async,
     tungstenite::{
@@ -19,8 +20,8 @@ use tokio_tungstenite::{
     WebSocketStream,
 };
 use utils_models::WebSocketQuery;
-use log::{error, info, warn};
 
+use crate::handlers::auth_handlers::security::{decode_jwt, JWT_SECRET};
 use crate::handlers::websocket_handlers::handle_realtime_data::start_stop_realtime_data;
 use crate::mqtt_srv::MqttClient;
 use crate::{config::WebsocketConfig, utils::utils_models};
@@ -92,18 +93,25 @@ async fn handle_incoming_messages(
     connections: Arc<RwLock<ClientsConnections>>,
     client_conn: Tx,
     workspace_ids: Vec<String>,
-    mqtt_client: Arc<MqttClient>
+    mqtt_client: Arc<MqttClient>,
 ) {
     while let Some(msg) = incoming.next().await {
         match msg {
             Ok(message) => {
                 if let Ok(text) = message.to_text() {
-                    let req: WsRequest = serde_json::from_str(text).unwrap();
+                    let req: Result<WsRequest, serde_json::Error> = serde_json::from_str(text);
 
-                    match req.type_.as_str() {
-                        "realTimeData" => start_stop_realtime_data(text, mqtt_client.clone()).await,
-                        //"entry/heartbeat" ,
-                        _ => warn!("no"), 
+                    match req {
+                        Ok(request) => {
+                            match request.type_.as_str() {
+                                "realTimeData" => {
+                                    start_stop_realtime_data(text, mqtt_client.clone()).await
+                                }
+                                //"entry/heartbeat" ,
+                                _ => warn!("no"),
+                            }
+                        }
+                        Err(_) => continue,
                     }
                 }
             }
@@ -149,7 +157,8 @@ async fn handle_outgoing_messages(
 pub async fn websocket(
     ws_config: WebsocketConfig,
     connections: Arc<RwLock<ClientsConnections>>,
-    mqtt_client: Arc<MqttClient>
+    mqtt_client: Arc<MqttClient>,
+    db: Database,
 ) -> Result<(), IoError> {
     let addr = ws_config.server;
 
@@ -161,14 +170,45 @@ pub async fn websocket(
 
         while let Ok((raw_stream, _)) = listener.accept().await {
             let mut uri = None;
-            let ws_stream = accept_hdr_async(raw_stream, |req: &Request, res: Response| {
-                uri = Some(req.uri().clone());
-                Ok(res)
+            let mut token = None;
+
+            let ws_stream = accept_hdr_async(raw_stream,  |req: &Request, mut res: Response| {
+                if let Some(auth_header) = req.headers().get("Authorization") {
+                        if let Ok(auth_str) = auth_header.to_str() {   
+                            token = Some(auth_str.to_string());
+                            uri = Some(req.uri().clone());
+                            println!("token {:#?}, uri {:#?}", token, uri);
+                            return Ok(res);
+                    }
+                }
+
+                *res.status_mut() = http::StatusCode::UNAUTHORIZED;
+                let body = Some("Unauthorized".to_string());
+                return Err(res.map(|_| body));
             })
-            .await
-            .expect("Error during the websocket handshake occurred");
+            .await;
+
+            let mut ws_stream = match ws_stream {
+                Ok(stream) => stream,
+                Err(_) => continue, // skip this connection if not authorized
+            };
 
             // Parsee the url to get users workspace ids.
+            let token = token.unwrap();
+            let claims = match decode_jwt(token, JWT_SECRET, db.clone()).await {
+                Ok(c) => c,
+                Err(_) => {
+                    let unauthorized = CloseFrame{
+                        code: tokio_tungstenite::tungstenite::protocol::frame::coding::CloseCode::Error,
+                        reason: std::borrow::Cow::Borrowed("Unauthorized")
+                    };
+                    let _ = ws_stream.close(Some(unauthorized)).await;
+                    continue;
+                }
+            };
+            
+            println!("{:#?}", claims);
+
             let uri = uri.unwrap().to_string();
             let workspace_ids: WebSocketQuery =
                 serde_qs::from_str(&uri.trim_start_matches("/?")).unwrap();
@@ -180,7 +220,8 @@ pub async fn websocket(
             let connections_clone = Arc::clone(&connections);
 
             // Add incoming connection to connection map.
-            { // In braces so this task doesn't hold the write rights.
+            {
+                // In braces so this task doesn't hold the write rights.
                 let conns = connections_clone.write().await;
                 conns
                     .add_client(workspace_ids_clone.clone().workspace_id, tx_arc.clone())
@@ -199,7 +240,7 @@ pub async fn websocket(
                 connections_clone,
                 tx_clone,
                 workspace_ids_clone.clone().workspace_id,
-                mqtt_client.clone()
+                mqtt_client.clone(),
             ));
 
             // Thread to handle sending message to clients.
