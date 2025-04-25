@@ -1,4 +1,3 @@
-use futures::FutureExt;
 use futures::{stream::SplitSink, SinkExt};
 use futures_channel::mpsc::{unbounded, UnboundedReceiver, UnboundedSender};
 use futures_util::StreamExt;
@@ -177,7 +176,6 @@ pub async fn websocket(
                         if let Ok(auth_str) = auth_header.to_str() {   
                             token = Some(auth_str.to_string());
                             uri = Some(req.uri().clone());
-                            println!("token {:#?}, uri {:#?}", token, uri);
                             return Ok(res);
                     }
                 }
@@ -193,9 +191,10 @@ pub async fn websocket(
                 Err(_) => continue, // skip this connection if not authorized
             };
 
-            // Parsee the url to get users workspace ids.
+            // Check if token is vlaid or not
+            // if not close connection with client
             let token = token.unwrap();
-            let claims = match decode_jwt(token, JWT_SECRET, db.clone()).await {
+            let _  = match decode_jwt(token, JWT_SECRET, db.clone()).await {
                 Ok(c) => c,
                 Err(_) => {
                     let unauthorized = CloseFrame{
@@ -207,8 +206,7 @@ pub async fn websocket(
                 }
             };
             
-            println!("{:#?}", claims);
-
+            // Parsee the url to get users workspace ids.
             let uri = uri.unwrap().to_string();
             let workspace_ids: WebSocketQuery =
                 serde_qs::from_str(&uri.trim_start_matches("/?")).unwrap();

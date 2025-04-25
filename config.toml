@@ -10,5 +10,7 @@ keep_alive = 10
 server = "0.0.0.0:3031"
 
 [database]
-uri = "mongodb://localhost:27017/"
-db = "wiohub"
+# uri = "mongodb://localhost:27017/"
+uri = "mongodb://45.55.199.190:27017/" # Prod db
+db = "wiohub-io"
+#db = "wiohub"

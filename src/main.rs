@@ -60,7 +60,7 @@ async fn main() -> mongodb::error::Result<()> {
     let db_clone = db.clone();
 
     let server_status: Arc<RwLock<Option<i64>>> = Arc::new(RwLock::new(None));
-    let mqtt_client = MqttClient::new(mqtt_settings, server_status.clone()).await;
+     let mqtt_client = MqttClient::new(mqtt_settings, server_status.clone()).await;
     let mqtt_client_ptr = Arc::new(mqtt_client.clone());
 
     let clients_workspaces: ClientsWorkspaces = Arc::new(RwLock::new(HashMap::new()));
