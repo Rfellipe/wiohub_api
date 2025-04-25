@@ -41,43 +41,29 @@ pub async fn devices_data_handler(
         }
     };
 
-    // let find_options = FindOneOptions::builder()
-    //     .projection(doc! {
-    //         "id": 1
-    //     })
-    //     .build();
-    // let client_coll: Collection<Client> = db.collection("Client");
-
-    // let client = client_coll
-    //     .find_one(
-    //         doc! {
-    //             "tenantId": user_info.tenant
-    //         },
-    //         find_options,
-    //     )
-    //     .await
-    //     .map_err(|e| warp::reject::custom(MongoRejection(e)))?
-    //     .ok_or_else(|| warp::reject::custom(NoRecordFound))?;
-
-    // println!("Client {:#?}", client);
-
     let device_coll: Collection<Device> = db.collection("Device");
     let data_coll: Collection<Data> = db.collection("Data");
+    
+    let user_id = ObjectId::parse_str(user_info.client_id.as_ref().unwrap()).unwrap();
 
     // Fetch active device IDs
     let devices_id = device_coll
         .find(
             doc! {
-                "clientId": ObjectId::parse_str(user_info.client_id.as_ref().unwrap()).unwrap(),
+                "clientId": user_id,
                 "status": "active",
             },
             None,
         )
         .await
-        .map_err(|e| warp::reject::custom(MongoRejection(e)))?
+        .map_err(|e| {
+            warp::reject::custom(MongoRejection(e))
+        })?
         .try_collect::<Vec<_>>()
         .await
-        .map_err(|e| warp::reject::custom(MongoRejection(e)))?
+        .map_err(|e| {
+            warp::reject::custom(MongoRejection(e))
+        })?
         .into_iter()
         .map(|doc| doc.id)
         .collect::<Vec<_>>();

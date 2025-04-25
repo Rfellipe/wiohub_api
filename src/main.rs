@@ -28,7 +28,7 @@ use std::{net::SocketAddr, path::Path, sync::Arc, time::Instant};
 // use websocket_srv::{websocket, ClientsConnections, ClientsWorkspaces};
 
 use db::get_db;
-use log::{error, info};
+use log::info;
 use tokio::sync::RwLock;
 use utils::utils_functions::send_to_zabbix;
 use utils::utils_models;
@@ -52,13 +52,15 @@ async fn main() -> mongodb::error::Result<()> {
         }
     };
 
+    let http = Arc::clone(&configs).read().await.http.clone();
+
     // let mqtt_settings = Arc::clone(&configs).read().await.mqtt.clone();
     // let ws_settings = Arc::clone(&configs).read().await.websocket.clone();
     let db_settings = Arc::clone(&configs).read().await.database.clone();
 
     let config = swagger::doc_config();
     let db = get_db(db_settings).await?;
-    let db_clone = db.clone();
+    // let db_clone = db.clone();
 
     // let server_status: Arc<RwLock<Option<i64>>> = Arc::new(RwLock::new(None));
     // let mqtt_client = MqttClient::new(mqtt_settings, server_status.clone()).await;
@@ -265,12 +267,12 @@ async fn main() -> mongodb::error::Result<()> {
         .or(device_controller_route)
         .or(devices_controller_route)
         .or(devices_status_route)
-        .with(with_cors())
+        .with(with_cors(&http.cors_origin))
         .recover(errors::handle_rejection)
         .with(warp::wrap_fn(monitoring_wrapper));
 
     info!("starting http srv...");
-    warp::serve(routes).run(([0, 0, 0, 0], 8162)).await;
+    warp::serve(routes).run((http.uri, http.port)).await;
 
     Ok(())
 }
@@ -281,9 +283,9 @@ fn with_db(
     warp::any().map(move || db.clone())
 }
 
-fn with_cors() -> warp::filters::cors::Cors {
+fn with_cors(origin: &str) -> warp::filters::cors::Cors {
     warp::cors()
-        .allow_origin("http://localhost:3000")
+        .allow_origin(origin)
         .allow_headers(vec!["Content-Type", "Authorization"])
         .allow_methods(&[Method::GET, Method::POST])
         .allow_credentials(true)

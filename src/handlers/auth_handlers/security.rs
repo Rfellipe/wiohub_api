@@ -116,10 +116,12 @@ pub async fn decode_jwt(
 
             Ok(claims)
         } else {
+            println!("error1");
             Err(warp::reject::custom(AuthError))
         }
     } else {
         let decoding_key = DecodingKey::from_secret(secret.as_ref());
+        println!("error2");
         match decode::<Claims>(&authorization, &decoding_key, &Validation::default()) {
             Ok(decoded) => Ok(decoded.claims),
             Err(_) => Err(warp::reject::custom(AuthError)), // Return an authentication error if decoding fails

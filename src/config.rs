@@ -6,8 +6,8 @@ use std::path::{Path, PathBuf};
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Configs {
     pub mqtt: MqttConfig,
-    pub websocket: WebsocketConfig,
     pub database: DatabaseConfig, 
+    pub http: HttpConfig,
 
     #[serde(skip)]
     config_path: PathBuf,
@@ -55,12 +55,15 @@ pub struct MqttConfig {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct WebsocketConfig {
-   pub server: String 
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct DatabaseConfig {
     pub uri: String,
     pub db: String
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct HttpConfig {
+    pub uri: [u8; 4],
+    pub port: u16,
+    pub cors_origin: String,
+    pub websocket_srv: String
 }

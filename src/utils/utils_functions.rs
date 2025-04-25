@@ -8,6 +8,7 @@ use futures::TryStreamExt;
 use mongodb::{bson::doc, Collection, Database};
 use std::process::Command;
 
+#[allow(dead_code)]
 pub async fn find_device_filter(sensor_type: String, device_id: ObjectId, db: Database) -> Result<Option<Filter>, mongodb::error::Error> {
     let filter_coll: Collection<Filter> = db.collection("Filter");
     let mongo_filter = doc! {
@@ -21,6 +22,7 @@ pub async fn find_device_filter(sensor_type: String, device_id: ObjectId, db: Da
     Ok(filter)
 } 
 
+#[allow(dead_code)]
 pub async fn find_workspace_with_device_id(
     device_id: ObjectId,
     db: Database,

@@ -136,7 +136,7 @@ pub struct Device {
     pub data: Option<Vec<Data>>,
     pub mode: Option<String>,
     pub status: Option<String>,
-    pub last_connection: Option<DateTime<Utc>>,
+    pub last_connection: Option<bson::DateTime>,
     pub mac_address: Option<String>,
     pub hardware_version: Option<String>,
     pub os_version: Option<String>,
@@ -156,8 +156,8 @@ pub struct Device {
     pub configurations: Option<Vec<DeviceConfiguration>>,
     pub software_updates: Option<Vec<SoftwareUpdate>>,
     pub file_uploads: Option<Vec<FileUpload>>,
-    pub created_at: Option<DateTime<Utc>>,
-    pub updated_at: Option<DateTime<Utc>>,
+    pub created_at: Option<bson::DateTime>,
+    pub updated_at: Option<bson::DateTime>,
     pub extensions: Option<Vec<ExtensionsOnDevice>>,
 }
 
