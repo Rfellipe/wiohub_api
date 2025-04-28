@@ -29,7 +29,7 @@ pub async fn devices_data_handler(
 ) -> Result<impl warp::Reply, warp::Rejection> {
     let user_info = decode_jwt(authorization, &JWT_SECRET, db.clone()).await?;
 
-    let (start, end) = match handle_time_interval(opts) {
+    let (start, end) = match handle_time_interval(opts, true) {
         Ok(values) => values,
         Err(err) => {
             let response = CustomMessage {
@@ -267,7 +267,7 @@ pub async fn device_data_handler(
 ) -> Result<impl warp::Reply, warp::Rejection> {
     let _user_info = decode_jwt(authorization, &JWT_SECRET, db.clone()).await?;
 
-    let (start, end) = match handle_time_interval(opts) {
+    let (start, end) = match handle_time_interval(opts, false) {
         Ok(values) => values,
         Err(err) => {
             let response = CustomMessage {

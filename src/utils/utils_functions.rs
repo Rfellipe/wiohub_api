@@ -1,8 +1,8 @@
+use crate::errors::AppError;
 use crate::models::{Filter, Workspace};
 use super::utils_models::DeviceControllerQueries;
 use bson::oid::ObjectId;
 use bson::Document;
-use chrono::ParseError;
 use chrono::{DateTime, FixedOffset, Utc};
 use futures::TryStreamExt;
 use mongodb::{bson::doc, Collection, Database};
@@ -89,7 +89,8 @@ pub async fn find_workspace_with_device_id(
 
 pub fn handle_time_interval(
     time_interval: DeviceControllerQueries,
-) -> Result<(String, String), ParseError> {
+    check_interval: bool
+) -> Result<(String, String), AppError> {
     let start_dt: DateTime<FixedOffset> =
         DateTime::parse_from_rfc3339(&time_interval.start).expect("Failed to parse start string");
     let end_dt: DateTime<FixedOffset> =
@@ -97,6 +98,17 @@ pub fn handle_time_interval(
 
     let start_utc: DateTime<Utc> = start_dt.with_timezone(&Utc);
     let end_utc: DateTime<Utc> = end_dt.with_timezone(&Utc);
+
+    if check_interval {
+        let duration = end_utc.signed_duration_since(start_utc);
+        if duration.num_days() > 15 {
+            let err = AppError {
+                err_type: crate::errors::ErrorType::BadRequest,
+                message: format!("Date interval must be lower than 15 days")
+            };
+            return Err(err)
+        }
+    }
 
     #[expect(deprecated)]
     let target_offset = FixedOffset::east(3 * 3600);
