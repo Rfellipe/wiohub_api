@@ -1,4 +1,4 @@
-use crate::errors::{BsonDateTimeRejection, MongoRejection};
+use crate::errors::{mongo_error, bson_datetime_error};
 use crate::handlers::auth_handlers::security::{decode_jwt, JWT_SECRET};
 use crate::models::{Data, Device};
 use crate::utils::{
@@ -57,12 +57,12 @@ pub async fn devices_data_handler(
         )
         .await
         .map_err(|e| {
-            warp::reject::custom(MongoRejection(e))
+            warp::reject::custom(mongo_error(e))
         })?
         .try_collect::<Vec<_>>()
         .await
         .map_err(|e| {
-            warp::reject::custom(MongoRejection(e))
+            warp::reject::custom(mongo_error(e))
         })?
         .into_iter()
         .map(|doc| doc.id)
@@ -74,8 +74,8 @@ pub async fn devices_data_handler(
             "$match": doc! {
                 "deviceId": doc! { "$in": devices_id },
                 "timestamp": doc! {
-                    "$gte": DateTime::parse_rfc3339_str(start).map_err(|e| warp::reject::custom(BsonDateTimeRejection(e)))?,
-                    "$lte": DateTime::parse_rfc3339_str(end).map_err(|e| warp::reject::custom(BsonDateTimeRejection(e)))?
+                    "$gte": DateTime::parse_rfc3339_str(start).map_err(|e| warp::reject::custom(bson_datetime_error(e)))?,
+                    "$lte": DateTime::parse_rfc3339_str(end).map_err(|e| warp::reject::custom(bson_datetime_error(e)))?
                 },
             }
         },
@@ -236,10 +236,10 @@ pub async fn devices_data_handler(
     let all_data = data_coll
         .aggregate(pipeline, None)
         .await
-        .map_err(|e| warp::reject::custom(MongoRejection(e)))?
+        .map_err(|e| warp::reject::custom(mongo_error(e)))?
         .try_collect::<Vec<Document>>()
         .await
-        .map_err(|e| warp::reject::custom(MongoRejection(e)))?;
+        .map_err(|e| warp::reject::custom(mongo_error(e)))?;
 
     Ok(warp::reply::json(&all_data))
 }
@@ -287,8 +287,8 @@ pub async fn device_data_handler(
             "$match": doc! {
                 "deviceId": ObjectId::parse_str(device_id).unwrap(),
                 "timestamp": doc! {
-                    "$gte": DateTime::parse_rfc3339_str(start).map_err(|e| warp::reject::custom(BsonDateTimeRejection(e)))?,
-                    "$lte": DateTime::parse_rfc3339_str(end).map_err(|e| warp::reject::custom(BsonDateTimeRejection(e)))?
+                    "$gte": DateTime::parse_rfc3339_str(start).map_err(|e| warp::reject::custom(bson_datetime_error(e)))?,
+                    "$lte": DateTime::parse_rfc3339_str(end).map_err(|e| warp::reject::custom(bson_datetime_error(e)))?
                 }
             }
         },
@@ -449,10 +449,10 @@ pub async fn device_data_handler(
     let all_data = data_coll
         .aggregate(pipeline, None)
         .await
-        .map_err(|e| warp::reject::custom(MongoRejection(e)))?
+        .map_err(|e| warp::reject::custom(mongo_error(e)))?
         .try_collect::<Vec<Document>>()
         .await
-        .map_err(|e| warp::reject::custom(MongoRejection(e)))?;
+        .map_err(|e| warp::reject::custom(mongo_error(e)))?;
 
     Ok(warp::reply::json(&all_data))
 }

@@ -1,6 +1,6 @@
+use crate::errors::{AppError, ErrorType};
 use crate::handlers::auth_handlers::security::{decode_jwt, JWT_SECRET};
 use crate::models::Device;
-use crate::errors::MongoRejection;
 use mongodb::bson::{doc, oid::ObjectId};
 use mongodb::{Collection, Database};
 use serde::{Deserialize, Serialize};
@@ -45,7 +45,14 @@ pub async fn device(
     let _  = device_coll.clone_with_type()
         .insert_one(new_device.clone(), None)
         .await
-        .map_err(|e| warp::reject::custom(MongoRejection(e)))?;
+        .map_err(|e| {
+            let err_str = format!("Mongo Error: {:#?}", e);
+            let err = AppError {
+                message: err_str,
+                err_type: ErrorType::MongoError 
+            };
+            warp::reject::custom(err)
+        })?;
 
     Ok(warp::reply::reply())
 }

@@ -1,4 +1,4 @@
-use crate::errors::MongoRejection;
+use crate::errors::mongo_error;
 use crate::handlers::auth_handlers::security::{decode_jwt, JWT_SECRET};
 use crate::models::{Client, Device};
 use crate::utils::utils_models::{ApiDeviceDataResponse, CustomMessage, DeviceStatusQueries};
@@ -38,7 +38,7 @@ pub async fn device_status_handler(
                 None,
             )
             .await
-            .map_err(|e| warp::reject::custom(MongoRejection(e)))?
+            .map_err(|e| warp::reject::custom(mongo_error(e)))?
             .ok_or_else(|| warp::reject::reject())?;
 
         Ok(warp::reply::json(&device_status))
@@ -57,7 +57,7 @@ pub async fn device_status_handler(
                 find_options,
             )
             .await
-            .map_err(|e| warp::reject::custom(MongoRejection(e)))?
+            .map_err(|e| warp::reject::custom(mongo_error(e)))?
             .ok_or_else(|| warp::reject::reject())?;
 
         let devices = device_coll
@@ -68,10 +68,10 @@ pub async fn device_status_handler(
                 None,
             )
             .await
-            .map_err(|e| warp::reject::custom(MongoRejection(e)))?
+            .map_err(|e| warp::reject::custom(mongo_error(e)))?
             .try_collect::<Vec<_>>()
             .await
-            .map_err(|e| warp::reject::custom(MongoRejection(e)))?
+            .map_err(|e| warp::reject::custom(mongo_error(e)))?
             .into_iter()
             .map(|doc| doc)
             .collect::<Vec<_>>();

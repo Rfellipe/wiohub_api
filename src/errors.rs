@@ -1,109 +1,115 @@
-use argon2::password_hash::Error as ArgonError;
-// use bson::oid::Error as BsonError;
-    use bson::datetime::Error as DateTimeError;
-use mongodb::error::Error as MongoError;
-use warp::{reject::Reject, reply::Reply};
-use warp_rate_limit::{add_rate_limit_headers, get_rate_limit_info, RateLimitRejection};
+#[allow(unused_imports)]
+#[allow(dead_code)]
 
-#[derive(Debug)]
-pub struct MongoRejection(pub MongoError);
+use serde::Serialize;
+use std::fmt::{self};
+use warp::reject::Reject;
 
-// #[derive(Debug)]
-// pub struct BsonRejection(pub BsonError);
+#[derive(Debug, Clone)]
+pub enum ErrorType {
+    // INotFound,
+    Internal,
+    BadRequest,
+    AuthError,
+    MongoError,
+}
 
-#[derive(Debug)]
-pub struct BsonDateTimeRejection(pub DateTimeError);
+#[derive(Debug, Clone)]
+pub struct AppError {
+    pub err_type: ErrorType,
+    pub message: String,
+}
 
-#[derive(Debug)]
-pub struct HashRejection(pub ArgonError);
+impl AppError {
+    // pub fn new(message: &str, err_type: ErrorType) -> AppError {
+    //     AppError {
+    //         message: message.to_string(),
+    //         err_type,
+    //     }
+    // }
 
-#[derive(Debug)]
-pub struct SignInError;
+    pub fn to_http_status(&self) -> warp::http::StatusCode {
+        match self.err_type {
+            // IErrorType::NotFound => warp::http::StatusCode::NOT_FOUND,
+            ErrorType::Internal => warp::http::StatusCode::INTERNAL_SERVER_ERROR,
+            ErrorType::BadRequest => warp::http::StatusCode::BAD_REQUEST,
+            ErrorType::AuthError => warp::http::StatusCode::FORBIDDEN,
+            ErrorType::MongoError => warp::http::StatusCode::INTERNAL_SERVER_ERROR,
+        }
+    }
 
-#[derive(Debug)]
-pub struct AuthError;
+    // fn from_mongo_err(err: mongodb::error::ErrorKind, context: &str) -> AppError {
+    //     AppError::new(
+    //         format!("{}: {}", context, err.to_string()).as_str(),
+    //         match err {
+    //             mongodb::error::ErrorKind::InvalidArgument { .. } => ErrorType::BadRequest,
+    //             mongodb::error::ErrorKind::BsonDeserialization { .. } => ErrorType::BadRequest,
+    //             mongodb::error::ErrorKind::BsonSerialization { .. } => ErrorType::BadRequest,
+    //             _ => ErrorType::Internal,
+    //         },
+    //     )
+    // }
+}
 
-// #[derive(Debug)]
-// pub struct NoRecordFound;
+impl std::error::Error for AppError {}
 
-impl Reject for MongoRejection {}
-// impl Reject for BsonRejection {}
-impl Reject for BsonDateTimeRejection {}
-impl Reject for HashRejection {}
-impl Reject for SignInError {}
-impl Reject for AuthError {}
-// impl Reject for NoRecordFound {}
+impl fmt::Display for AppError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", self.message)
+    }
+}
+
+impl Reject for AppError {}
+
+#[derive(Serialize)]
+struct ErrorMessage {
+    code: u16,
+    message: String,
+}
 
 pub async fn handle_rejection(
     err: warp::Rejection,
 ) -> Result<impl warp::Reply, std::convert::Infallible> {
-    if let Some(MongoRejection(e)) = err.find() {
-        // Handle MongoDB errors
-        Ok(warp::reply::with_status(
-            format!("MongoDB error: {}", e),
-            warp::http::StatusCode::INTERNAL_SERVER_ERROR,
-        )
-        .into_response())
-    } else if let Some(HashRejection(e)) = err.find() {
-        Ok(warp::reply::with_status(
-            format!("Error Encypting/Decrypting password: {}", e),
-            warp::http::StatusCode::INTERNAL_SERVER_ERROR,
-        )
-        .into_response())
-    } else if let Some(SignInError) = err.find() {
-        Ok(warp::reply::with_status(
-            "Email or password incorrect".to_string(),
-            warp::http::StatusCode::FORBIDDEN,
-        )
-        .into_response())
-    } else if let Some(AuthError) = err.find() {
-        Ok(warp::reply::with_status(
-            "Authorization token invalid or expired".to_string(),
-            warp::http::StatusCode::FORBIDDEN,
-        )
-        .into_response())
-    } else if let Some(rate_limit_rejection) = err.find::<RateLimitRejection>() {
-        let info = get_rate_limit_info(rate_limit_rejection);
+    let code;
+    let message;
 
-        let message = format!("Rate limit exceeded. Try again after {}.", info.retry_after);
+    if err.is_not_found() {
+        code = warp::http::StatusCode::NOT_FOUND;
+        message = "Not Found";
+    } else if let Some(app_err) = err.find::<AppError>() {
+        code = app_err.to_http_status();
+        message = app_err.message.as_str();
+    } else if let Some(_) = err.find::<warp::filters::body::BodyDeserializeError>() {
+        code = warp::http::StatusCode::BAD_REQUEST;
+        message = "Invalid Body";
+    } else if let Some(_) = err.find::<warp::reject::MethodNotAllowed>() {
+        code = warp::http::StatusCode::METHOD_NOT_ALLOWED;
+        message = "Method Not Allowed";
+    } else {
+        // In case we missed something - log and respond with 500
+        eprintln!("unhandled rejection: {:?}", err);
+        code = warp::http::StatusCode::INTERNAL_SERVER_ERROR;
+        message = "Unhandled rejection";
+    }
 
-        let mut response =
-            warp::reply::with_status(message, warp::http::StatusCode::TOO_MANY_REQUESTS)
-                .into_response();
+    let json = warp::reply::json(&ErrorMessage {
+        code: code.as_u16(),
+        message: message.into(),
+    });
 
-        let _ = add_rate_limit_headers(response.headers_mut(), &info);
+    Ok(warp::reply::with_status(json, code))
+}
 
-        Ok(response)
-    }  else if let Some(BsonDateTimeRejection(e)) = err.find() {
-       // Handle Bson errors
-       Ok(warp::reply::with_status(
-           format!("Bson Date Time error: {}", e),
-           warp::http::StatusCode::INTERNAL_SERVER_ERROR,
-       ).into_response())
-   } else {
-        // Handle other errors
-        Ok(warp::reply::with_status(
-            "Internal server error".to_string(),
-            warp::http::StatusCode::INTERNAL_SERVER_ERROR,
-        )
-        .into_response())
+pub fn mongo_error(e: mongodb::error::Error) -> AppError {
+    AppError {
+        err_type: ErrorType::MongoError,
+        message: format!("Mongo Error: {:#?}", e),
     }
 }
 
-/*
-   else if let Some(NoRecordFound) = err.find() {
-        Ok(warp::reply::with_status(
-            "No record Found".to_string(),
-            warp::http::StatusCode::BAD_REQUEST,
-        )
-        .into_response())
+pub fn bson_datetime_error(e: bson::datetime::Error) -> AppError {
+    AppError {
+        err_type: ErrorType::BadRequest,
+        message: format!("Date format incorrect: {:#?}", e),
     }
-
-    else if let Some(BsonRejection(e)) = err.find() {
-       // Handle Bson errors
-       Ok(warp::reply::with_status(
-           format!("Bson error: {}", e),
-           warp::http::StatusCode::INTERNAL_SERVER_ERROR,
-       ).into_response())
-    } 
-* */
+}

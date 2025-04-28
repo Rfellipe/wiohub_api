@@ -1,6 +1,8 @@
-use crate::errors::AuthError;
 use cookie::Cookie;
 use warp::Filter;
+
+use crate::errors::AppError;
+use crate::errors::ErrorType;
 
 pub async fn extract_headers(
     header_cookie: Option<String>,
@@ -24,8 +26,12 @@ pub async fn extract_headers(
         }
     }
 
-    // If neither is found, reject the request
-    Err(warp::reject::custom(AuthError))
+    let err_str = format!("Authorization token invalid or expired");
+    let err = AppError {
+        message: err_str,
+        err_type: ErrorType::AuthError
+    };
+    Err(warp::reject::custom(err))
 }
 
 pub fn with_auth() -> impl Filter<Extract = (String,), Error = warp::Rejection> + Clone {

@@ -1,16 +1,32 @@
-use crate::errors::{AuthError, HashRejection, MongoRejection, SignInError};
+use crate::errors::{AppError, ErrorType};
 use crate::handlers::auth_handlers::security::{generate_jwt, JWT_SECRET};
-use crate::models::User;
+use crate::utils::responder::respond;
 use crate::utils::utils_models::SinginBody;
 use argon2::{
     password_hash::{PasswordHash, PasswordVerifier},
     Argon2,
 };
+use bson::oid::ObjectId;
 use mongodb::bson::doc;
 use mongodb::options::FindOneOptions;
 use mongodb::{Collection, Database};
-use warp::reply::Reply;
-use warp_rate_limit::{add_rate_limit_headers, RateLimitInfo};
+use serde::{Deserialize, Serialize};
+use serde_json::json;
+use warp::http::StatusCode;
+use warp_rate_limit::RateLimitInfo;
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+struct User {
+    #[serde(rename = "_id")]
+    pub id: ObjectId,
+    pub name: String,
+    pub email: String,
+    pub phone: String,
+    pub password: String,
+    pub client_id: ObjectId,
+    pub tenant_id: String,
+}
 
 #[utoipa::path(
         get,
@@ -23,7 +39,7 @@ use warp_rate_limit::{add_rate_limit_headers, RateLimitInfo};
     )
 ]
 pub async fn auth_signin_handler(
-    rate_limit_info: RateLimitInfo,
+    _rate_limit_info: RateLimitInfo,
     body: SinginBody,
     db: Database,
 ) -> Result<impl warp::Reply, warp::Rejection> {
@@ -39,46 +55,86 @@ pub async fn auth_signin_handler(
                     "email": 1,
                     "phone": 1,
                     "password": 1,
-                    "role": 1,
                     "clientId": 1,
                     "tenantId": 1
                 })
                 .build(),
         )
-        .await
-        .map_err(|e| warp::reject::custom(MongoRejection(e)))?;
+        .await;
 
-        println!("{:#?}", user);
+    match user {
+        Ok(user) => {
+            if let Some(user) = user {
+                let password = user.clone().password;
+                let user_id = user.clone().id;
+                let client_id = user.clone().client_id;
+                let tenant_id = user.clone().tenant_id;
 
-    if let Some(user) = user {
-        let password = user.clone().password;
-        let id = user.clone().id;
-        let client_id = user.clone().client_id.ok_or_else(|| warp::reject::not_found())?;
-        let tenant_id = user.tenant_id.ok_or_else(|| warp::reject::not_found())?;
+                let parsed_hash = PasswordHash::new(&password);
 
+                let hash = match parsed_hash {
+                    Ok(hash) => hash,
+                    Err(err) => {
+                        let err_str = format!("Internal Error: {:#?}", err);
+                        let e = AppError {
+                            message: err_str,
+                            err_type: ErrorType::Internal
+                        };
+                        return Err(warp::reject::custom(e))
+                    }
+                };
 
-        let parsed_hash =
-            PasswordHash::new(&password).map_err(|e| warp::reject::custom(HashRejection(e)))?;
+                let password_match = Argon2::default()
+                    .verify_password(body.password.as_bytes(), &hash)
+                    .is_ok();
 
-        let password_match = Argon2::default()
-            .verify_password(body.password.as_bytes(), &parsed_hash)
-            .is_ok();
-
-        if !password_match {
-            return Err(warp::reject::custom(SignInError));
-        }
-
-        match generate_jwt(&id.to_string(), &tenant_id.to_string(), &client_id.to_string(), JWT_SECRET, 3600) {
-            Ok(token) => {
-                let mut response =
-                    warp::reply::with_status(token, warp::http::StatusCode::OK).into_response();
-                let _ = add_rate_limit_headers(response.headers_mut(), &rate_limit_info);
-                return Ok(response);
+                if !password_match {
+                    let err_str = format!("Passwords don't match");
+                    let e = AppError {
+                        message: err_str,
+                        err_type: ErrorType::BadRequest
+                    };
+                    return Err(warp::reject::custom(e))
+                }
+                
+                match generate_jwt(
+                    &ObjectId::to_string(&user_id),
+                    &tenant_id,
+                    &ObjectId::to_string(&client_id),
+                    JWT_SECRET,
+                    3600,
+                ) {
+                    Ok(token) => {
+                        let res = json!({
+                            "token": token
+                        });
+                        respond(Ok(res), StatusCode::OK)
+                    }
+                    Err(err) => {
+                        let err_str = format!("Error finding user: {:#?}", err);
+                        let e = AppError {
+                            err_type: ErrorType::BadRequest,
+                            message: err_str,
+                        };
+                        return Err(warp::reject::custom(e))
+                    }
+                }
+            } else {
+                let err_str = format!("User not found!");
+                let e = AppError {
+                    message: err_str,
+                    err_type: ErrorType::BadRequest,
+                };
+                Err(warp::reject::custom(e))
             }
-            Err(_e) => Err(warp::reject::reject()),
         }
-    } else {
-        println!("NO DATA FOUND FOR THIS EMAIL");
-        Err(warp::reject::custom(AuthError))
+        Err(err) => {
+            let err_str = format!("Internal Error: {:#?}", err);
+            let e = AppError {
+                message: err_str,
+                err_type: ErrorType::Internal,
+            };
+            Err(warp::reject::custom(e))
+        }
     }
 }

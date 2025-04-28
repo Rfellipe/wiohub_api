@@ -1,5 +1,4 @@
-use crate::errors::{AuthError, MongoRejection};
-use crate::models::User;
+use crate::{errors::{AppError, ErrorType}, models::User};
 use jsonwebtoken::{decode, encode, DecodingKey, EncodingKey, Header, Validation};
 use mongodb::{
     bson::doc,
@@ -89,7 +88,14 @@ pub async fn decode_jwt(
                     .build(),
             )
             .await
-            .map_err(|e| warp::reject::custom(MongoRejection(e)))?;
+            .map_err(|e| {
+                let err_str = format!("mongo error: {:#?}", e);
+                let err = AppError {
+                    message: err_str,
+                    err_type: ErrorType::Internal
+                };
+                warp::reject::custom(err)
+            })?;
 
         if let Some(user) = user {
             let expiration = SystemTime::now()
@@ -116,15 +122,25 @@ pub async fn decode_jwt(
 
             Ok(claims)
         } else {
-            println!("error1");
-            Err(warp::reject::custom(AuthError))
+            let err_str = format!("No user found");
+            let err = AppError {
+                message: err_str,
+                err_type: ErrorType::AuthError
+            };
+            Err(warp::reject::custom(err))
         }
     } else {
         let decoding_key = DecodingKey::from_secret(secret.as_ref());
-        println!("error2");
         match decode::<Claims>(&authorization, &decoding_key, &Validation::default()) {
             Ok(decoded) => Ok(decoded.claims),
-            Err(_) => Err(warp::reject::custom(AuthError)), // Return an authentication error if decoding fails
+            Err(_) => {
+                let err_str = format!("No user found");
+                let err = AppError {
+                    message: err_str,
+                    err_type: ErrorType::AuthError
+                };
+                Err(warp::reject::custom(err)) // Return an authentication error if decoding fails
+            } 
         }
     }
 }
