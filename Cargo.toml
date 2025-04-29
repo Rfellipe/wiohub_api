@@ -12,7 +12,6 @@ warp-rate-limit = "0.3.0"
 argon2 = "0.5.3"
 jsonwebtoken = "9.3.1"
 mongodb = "2.1"
-#futures = "0.3"
 cookie = "0.18"
 serde_qs = "0.12"
 rumqttc = "0.24.0"
@@ -25,6 +24,9 @@ futures = "0.3.31"
 futures-channel = "0.3.31"
 futures-util = "0.3.31"
 rand = "0.8"
+flate2 = "1.1.1"
+tokio-util = "0.7.15"
+async-stream = "0.3.6"
 utoipa = { version = "^5", features = ["uuid", "chrono"] }
 utoipa-swagger-ui = { version = "^9", features = ["debug-embed", "reqwest", "actix-web"] }
 tokio = { version = "1", features = ["full"] }
@@ -32,3 +34,4 @@ serde = { version = "1.0", features = ["derive"] }
 bson = { version = "2", features = ["chrono-0_4"] } # Needed for using chrono datetime in doc
 chrono = { version = "0.4", features = ["serde"] }
 uuid = { version = "0.8", features = ["serde"] }
+bytes = { version = "1.10.1", features = ["serde"] }
