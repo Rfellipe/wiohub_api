@@ -7,6 +7,7 @@ use crate::utils::{
 };
 use bson::DateTime;
 use bytes::Bytes;
+use chrono::{NaiveDateTime, TimeZone, Utc};
 use futures::{
     stream::StreamExt,
     TryStreamExt,
@@ -60,6 +61,7 @@ struct AggregationDevice {
     pub location_id: bson::oid::ObjectId,
     pub timezone: Option<i32>,
     pub status: String,
+    pub deactivated_at: Option<bson::DateTime>,
 }
 
 #[utoipa::path(
@@ -184,12 +186,9 @@ pub async fn devices_data_handler(
         yield Ok::<Bytes, Infallible>(Bytes::from("["));
 
         let mut first = true;
-        // let mut grouped_devices: HashMap<AggregationDevice, Vec<serde_json::Value>> = HashMap::new();
-
         while let Some(doc_result) = cursor.next().await {
             match doc_result {
                 Ok(doc) => {
-
                     let agg_data: AggregatedData = match bson::from_document(doc) {
                         Ok(data) => data,
                         Err(e) => {
@@ -203,6 +202,17 @@ pub async fn devices_data_handler(
                         None => continue
                     };
 
+                    if let Some(deactivated_at) = device.deactivated_at {
+                        let to_naive = NaiveDateTime::parse_from_str(&agg_data.id.timestamp, "%Y-%m-%dT%H:%M:%S")
+                            .expect("Failed to parse datetime");
+                        let to_utc = Utc.from_utc_datetime(&to_naive);
+                        let current_timestamp = DateTime::from_chrono(to_utc);
+
+                        if deactivated_at < current_timestamp {
+                           continue; 
+                        }
+                    }                    
+
                     let sensor_map: HashMap<String, serde_json::Value> = agg_data.data.into_iter()
                         .map(|sensor| {
                             let clean_val = match sensor.value {
@@ -210,7 +220,8 @@ pub async fn devices_data_handler(
                                 _ => serde_json::json!(0.0),
                             };
                             (sensor.sensor_type, serde_json::json!({ "values": clean_val }))
-                        }).collect();
+                        })
+                        .collect();
 
                     let response_json = serde_json::json!({
                         "name": device.name,
