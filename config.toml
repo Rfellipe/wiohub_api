@@ -1,23 +1,8 @@
 [mqtt]
-broker = "127.0.0.1"
+broker = "0.0.0.0"
 port = 1883
 backup_dir = "/tmp/api/mqtt_backup"
 username = "synchub_api"
 password = "123"
 keep_alive = 10
 
-# [websocket]
-# server = "0.0.0.0:3031"
-
-[database]
-uri = "mongodb://45.55.199.190:27017/" # Prod db
-db = "wiohub-io"
-# uri = "/tmp/mongodb-27017.sock"
-# uri = "mongodb://localhost:27017/"
-# db = "wiohub"
-
-[http]
-uri = [0, 0, 0, 0]
-port = 8162
-cors_origin = "http://localhost:3000"
-websocket_srv = "0.0.0.0:3031" 

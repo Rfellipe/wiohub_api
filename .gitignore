@@ -1,5 +1,5 @@
 target/**
-
+jsons/**
 *.swp
 
 Cargo.lock
