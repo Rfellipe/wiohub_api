@@ -2,14 +2,23 @@ pub mod jsonb_wrapper;
 pub mod models;
 pub mod schema;
 
+use crate::{
+    modules::mqtt::models::DeviceMessage,
+    shared::{
+        db::models::{Device, DeviceMetric, NewDevice, NewDeviceMetric},
+        errors::{AppError, ErrorType},
+    },
+};
+use bigdecimal::{BigDecimal, FromPrimitive};
 use chrono::NaiveDateTime;
 use diesel::{
     pg::PgConnection,
     prelude::*,
+    // query_builder::{QueryFragment, QueryId},
+    // quIery_dsl::methods::LoadQuery,
     r2d2::{ConnectionManager, Pool, PooledConnection},
 };
-
-use crate::shared::errors::AppError;
+// use uuid::Uuid;
 
 type PooledPg = PooledConnection<ConnectionManager<PgConnection>>;
 
@@ -22,7 +31,7 @@ impl DBAccessManager {
         DBAccessManager { connection }
     }
 
-    pub fn get_device_data(
+    pub fn get_devices_data(
         &mut self,
         user_id: String,
         start: NaiveDateTime,
@@ -72,6 +81,80 @@ impl DBAccessManager {
 
         Ok(sensors_data)
     }
+
+    pub fn get_device(
+        &mut self,
+        device_serial: uuid::Uuid,
+    ) -> Result<Option<Device>, Box<dyn std::error::Error + Send + Sync>> {
+        use schema::devices::dsl::{devices, id};
+
+        let device = devices
+            .filter(id.eq(&device_serial))
+            .first::<Device>(&mut self.connection)
+            .optional()?;
+
+        Ok(device)
+    }
+
+    pub fn add_device(
+        &mut self,
+        device_serial: uuid::Uuid,
+        new_device: NewDevice,
+    ) -> Result<Device, Box<dyn std::error::Error + Send + Sync>> {
+        use schema::devices::dsl::devices;
+
+        let existing_device = self.get_device(device_serial)?;
+
+        match existing_device {
+            Some(device) => {
+                log::info!(
+                    "Device alredy exists: id: {} - name: {}",
+                    device.id,
+                    device.name
+                );
+                Err("Device alredy exists".into())
+            }
+            None => {
+                log::info!("New Device registration: {}", new_device.name);
+                let dev = diesel::insert_into(devices)
+                    .values(&new_device)
+                    .get_result::<Device>(&mut self.connection)?;
+                Ok(dev)
+            }
+        }
+    }
+
+    pub fn save_device_data(
+        &mut self,
+        message: DeviceMessage,
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        use schema::device_metrics::dsl::device_metrics;
+
+        let device = self.get_device(message.device_id)?;
+        match device {
+            Some(dev) => {
+                let mut new_metrics: Vec<NewDeviceMetric> = vec![];
+
+                for sensor in message.sensors {
+                    let new_metric = NewDeviceMetric {
+                        workspace_id: dev.workspace_id,
+                        device_id: dev.id,
+                        metric_name: sensor._type,
+                        metric_value: BigDecimal::from_f32(sensor.average.unwrap()).unwrap(),
+                    };
+
+                    new_metrics.push(new_metric);
+                }
+
+                let _metrics = diesel::insert_into(device_metrics)
+                    .values(&new_metrics)
+                    .get_results::<DeviceMetric>(&mut self.connection)?;
+
+                Ok(())
+            }
+            None => Err("No device found".into()),
+        }
+    }
 }
 
 pub type PgPool = Pool<ConnectionManager<PgConnection>>;
@@ -81,4 +164,18 @@ pub fn pg_pool() -> PgPool {
 
     let manager = ConnectionManager::<PgConnection>::new(&db_url);
     Pool::new(manager).expect("Postgres connection pool could not be created")
+}
+
+pub fn get_db_access_manager(pool: PgPool) -> Result<DBAccessManager, AppError> {
+    // .select(Devices::as_select())
+    match pool.get() {
+        Ok(conn) => Ok(DBAccessManager::new(conn)),
+        Err(err) => {
+            log::error!("Error getting database access manager: {}", err.to_string());
+            Err(AppError::new(
+                "Error getting connection from pool",
+                ErrorType::Internal,
+            ))
+        }
+    }
 }

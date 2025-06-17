@@ -15,17 +15,13 @@ use warp::{
 )]
 pub struct WiohubDoc;
 
-pub fn doc_config() -> Arc<Config<'static>> {
-    let config = Arc::new(Config::from("/api/api-doc.json"));
-
-    config
-}
-
 pub async fn serve_swagger(
     full_path: FullPath,
     tail: Tail,
-    config: Arc<Config<'static>>,
+    // config: Arc<Config<'static>>,
 ) -> Result<Box<dyn Reply + 'static>, Rejection> {
+    let config = Arc::new(Config::from("/api/api-doc.json"));
+
     if full_path.as_str() == "/docs" {
         return Ok(Box::new(warp::redirect::found(Uri::from_static("/api/docs/"))));
     }

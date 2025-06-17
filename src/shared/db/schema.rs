@@ -1,118 +1,162 @@
 // @generated automatically by Diesel CLI.
 
 diesel::table! {
-    access_control_entry (id) {
-        id -> Int8,
-        description -> Nullable<Varchar>,
-        expires_at -> Nullable<Timestamp>,
-        is_active -> Bool,
-        permission -> Nullable<Varchar>,
-        user_id -> Nullable<Text>,
-        workspace_id -> Nullable<Int4>,
-        location_id -> Nullable<Int4>,
-        device_id -> Nullable<Int4>,
-        created_at -> Timestamptz,
-        updated_at -> Timestamp,
+    activity_log (id) {
+        id -> Uuid,
+        workspace_id -> Uuid,
+        user_id -> Nullable<Uuid>,
+        device_id -> Nullable<Uuid>,
+        action -> Text,
+        details -> Nullable<Jsonb>,
+        created_at -> Nullable<Timestamptz>,
     }
 }
 
 diesel::table! {
-    device_group (id) {
-        id -> Int4,
-        #[max_length = 255]
-        name -> Varchar,
-        workspace_id -> Int4,
+    alerts (id) {
+        id -> Uuid,
+        workspace_id -> Uuid,
+        device_id -> Nullable<Uuid>,
+        issue -> Text,
+        priority -> Text,
+        status -> Text,
+        created_at -> Nullable<Timestamptz>,
+        resolved_at -> Nullable<Timestamptz>,
+    }
+}
+
+diesel::table! {
+    device_metrics (id) {
+        id -> Uuid,
+        workspace_id -> Uuid,
+        device_id -> Uuid,
+        metric_name -> Text,
+        metric_value -> Numeric,
+        unit -> Nullable<Text>,
+        timestamp -> Nullable<Timestamptz>,
+        created_at -> Nullable<Timestamptz>,
     }
 }
 
 diesel::table! {
     devices (id) {
-        id -> Int4,
-        #[max_length = 255]
-        name -> Varchar,
-        location_id -> Int4,
-        #[max_length = 255]
-        device_type -> Varchar,
-        device_group_id -> Int4,
-        last_seen -> Nullable<Timestamp>,
-        created_at -> Nullable<Timestamp>,
-        updated_at -> Nullable<Timestamp>,
-    }
-}
-
-diesel::table! {
-    location (id) {
-        id -> Int4,
-        #[max_length = 255]
-        name -> Varchar,
-        workspace_id -> Int4,
-        created_at -> Nullable<Timestamp>,
-        updated_at -> Nullable<Timestamp>,
-    }
-}
-
-diesel::table! {
-    organization (id) {
-        id -> Int4,
-        #[max_length = 255]
-        name -> Varchar,
-    }
-}
-
-diesel::table! {
-    sensor_data (id) {
-        id -> Int8,
-        device_id -> Int4,
-        timestamp -> Timestamp,
+        id -> Uuid,
+        workspace_id -> Uuid,
+        name -> Text,
         #[sql_name = "type"]
-        type_ -> Varchar,
-        value -> Float8,
-        unit -> Varchar,
-        created_at -> Nullable<Timestamp>,
+        type_ -> Text,
+        status -> Text,
+        location -> Nullable<Text>,
+        last_seen_at -> Nullable<Timestamptz>,
+        created_at -> Nullable<Timestamptz>,
+        location_id -> Nullable<Uuid>,
     }
 }
 
 diesel::table! {
-    users (id) {
-        id -> Text,
-        name -> Varchar,
-        email -> Varchar,
-        organization_id -> Int4,
-        last_login -> Timestamp,
-        is_active -> Bool,
-        created_at -> Timestamptz,
-        updated_at -> Timestamp,
+    energy_data (id) {
+        id -> Uuid,
+        workspace_id -> Uuid,
+        device_id -> Nullable<Uuid>,
+        consumption_kwh -> Numeric,
+        generation_kwh -> Nullable<Numeric>,
+        timestamp -> Timestamptz,
     }
 }
 
 diesel::table! {
-    workspace (id) {
-        id -> Int4,
-        #[max_length = 255]
-        name -> Varchar,
-        organization_id -> Int4,
+    locations (id) {
+        id -> Uuid,
+        user_id -> Uuid,
+        name -> Text,
+        address -> Nullable<Text>,
+        latitude -> Nullable<Numeric>,
+        longitude -> Nullable<Numeric>,
+        created_at -> Nullable<Timestamptz>,
     }
 }
 
-diesel::joinable!(access_control_entry -> devices (device_id));
-diesel::joinable!(access_control_entry -> location (location_id));
-diesel::joinable!(access_control_entry -> users (user_id));
-diesel::joinable!(access_control_entry -> workspace (workspace_id));
-diesel::joinable!(device_group -> workspace (workspace_id));
-diesel::joinable!(devices -> device_group (device_group_id));
-diesel::joinable!(devices -> location (location_id));
-diesel::joinable!(location -> workspace (workspace_id));
-diesel::joinable!(sensor_data -> devices (device_id));
-diesel::joinable!(users -> organization (organization_id));
-diesel::joinable!(workspace -> organization (organization_id));
+diesel::table! {
+    maintenance_tasks (id) {
+        id -> Uuid,
+        device_id -> Text,
+        location_id -> Text,
+        responsible_user_id -> Text,
+        description -> Text,
+        periodicity -> Text,
+        scheduled_date -> Date,
+        status -> Text,
+        created_at -> Nullable<Timestamptz>,
+        updated_at -> Nullable<Timestamptz>,
+    }
+}
+
+diesel::table! {
+    organizations (id) {
+        id -> Uuid,
+        name -> Text,
+        created_by -> Nullable<Uuid>,
+        created_at -> Nullable<Timestamptz>,
+    }
+}
+
+diesel::table! {
+    profiles (id) {
+        id -> Uuid,
+        first_name -> Nullable<Text>,
+        last_name -> Nullable<Text>,
+        address -> Nullable<Text>,
+        bio -> Nullable<Text>,
+        avatar_url -> Nullable<Text>,
+        updated_at -> Nullable<Timestamptz>,
+        organization_id -> Nullable<Uuid>,
+        current_workspace_id -> Nullable<Uuid>,
+    }
+}
+
+diesel::table! {
+    user_organizations (user_id, organization_id) {
+        user_id -> Uuid,
+        organization_id -> Uuid,
+        role -> Text,
+        joined_at -> Nullable<Timestamptz>,
+    }
+}
+
+diesel::table! {
+    workspaces (id) {
+        id -> Uuid,
+        organization_id -> Uuid,
+        name -> Text,
+        created_at -> Nullable<Timestamptz>,
+    }
+}
+
+diesel::joinable!(activity_log -> devices (device_id));
+diesel::joinable!(activity_log -> workspaces (workspace_id));
+diesel::joinable!(alerts -> devices (device_id));
+diesel::joinable!(alerts -> workspaces (workspace_id));
+diesel::joinable!(device_metrics -> devices (device_id));
+diesel::joinable!(device_metrics -> workspaces (workspace_id));
+diesel::joinable!(devices -> locations (location_id));
+diesel::joinable!(devices -> workspaces (workspace_id));
+diesel::joinable!(energy_data -> devices (device_id));
+diesel::joinable!(energy_data -> workspaces (workspace_id));
+diesel::joinable!(profiles -> organizations (organization_id));
+diesel::joinable!(profiles -> workspaces (current_workspace_id));
+diesel::joinable!(user_organizations -> organizations (organization_id));
+diesel::joinable!(workspaces -> organizations (organization_id));
 
 diesel::allow_tables_to_appear_in_same_query!(
-    access_control_entry,
-    device_group,
+    activity_log,
+    alerts,
+    device_metrics,
     devices,
-    location,
-    organization,
-    sensor_data,
-    users,
-    workspace,
+    energy_data,
+    locations,
+    maintenance_tasks,
+    organizations,
+    profiles,
+    user_organizations,
+    workspaces,
 );

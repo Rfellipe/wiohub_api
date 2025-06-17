@@ -56,7 +56,7 @@ pub async fn devices_data_handler(
     let (start, end) = params_to_naive_datetime(params)?;
 
     let mut res = db
-        .get_device_data(user_info.id, start, end)
+        .get_devices_data(user_info.id, start, end)
         .map_err(|err| warp::reject::custom(err))?;
 
     for reading in &mut res {

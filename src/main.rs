@@ -26,10 +26,10 @@ async fn main() -> Result<(), std::io::Error> {
     check_vars().unwrap();
     let pg_pool = pg_pool(); // Start db
 
-    // let _mqtt_task = modules::mqtt::start_mqtt().await;
+    let mqtt_task = modules::mqtt::start_mqtt(pg_pool.clone()).await;
     let api_task = modules::api::start_api(pg_pool.clone()).await;
 
-    let _ = tokio::try_join!(api_task);
+    let _ = tokio::try_join!(api_task, mqtt_task);
 
     Ok(())
 }

@@ -18,23 +18,21 @@ pub struct WiohubApi;
 pub async fn start_api(pool: PgPool) -> JoinHandle<()> {
     let task = tokio::spawn(async move {
         // Generate API docs
-        // let config = swagger::doc_config();
         let api_doc = warp::path("api-doc.json")
             .and(warp::get())
             .map(|| warp::reply::json(&swagger::WiohubDoc::openapi()));
 
-        // let swagger_ui = warp::path("docs")
-        //     .and(warp::get())
-        //     .and(warp::path::full())
-        //     .and(warp::path::tail())
-        //     .and(warp::any().map(move || config.clone()))
-        //     .and_then(swagger::serve_swagger);
+        let swagger_ui = warp::path("docs")
+            .and(warp::get())
+            .and(warp::path::full())
+            .and(warp::path::tail())
+            .and_then(swagger::serve_swagger);
 
         // Generate routes
         let routes = warp::path!("api" / ..)
             .and(
                 api_doc
-                    // .or(swagger_ui)
+                    .or(swagger_ui)
                     .or(routes::devices_route(pool.clone())),
             )
             .recover(handle_rejection);

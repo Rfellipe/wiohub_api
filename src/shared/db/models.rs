@@ -1,48 +1,59 @@
 use super::{jsonb_wrapper::Json, schema};
+use bigdecimal::BigDecimal;
 use chrono::NaiveDateTime;
-use diesel::{prelude::QueryableByName, sql_types::*, Selectable};
+use diesel::{
+    prelude::{Insertable, Queryable, QueryableByName},
+    sql_types::*,
+    Selectable,
+};
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Serialize, Deserialize, Selectable, QueryableByName)]
+#[derive(Debug, Serialize, Deserialize, Selectable, Queryable)]
 #[diesel(table_name = schema::devices)]
 #[diesel(check_for_backend(diesel::pg::Pg))]
-pub struct Devices {
-    #[diesel(sql_type = Int4)]
-    pub id: i32,
-    #[diesel(sql_type = Varchar)]
+pub struct Device {
+    pub id: uuid::Uuid,
+    pub workspace_id: uuid::Uuid,
     pub name: String,
-    #[diesel(sql_type = Int4)]
-    pub location_id: i32,
-    #[diesel(sql_type = Varchar)]
-    pub device_type: String,
-    #[diesel(sql_type = Int4)]
-    pub device_group_id: i32,
-    #[diesel(sql_type = Nullable<Timestamp>)]
-    pub last_seen: Option<NaiveDateTime>,
-    #[diesel(sql_type = Nullable<Timestamp>)]
+    pub type_: String,
+    pub status: String,
+    pub location: Option<String>,
+    pub last_seen_at: Option<NaiveDateTime>,
     pub created_at: Option<NaiveDateTime>,
-    #[diesel(sql_type = Nullable<Timestamp>)]
-    pub updated_at: Option<NaiveDateTime>,
+    pub location_id: Option<uuid::Uuid>,
 }
 
-#[derive(Debug, Serialize, Deserialize, Selectable, QueryableByName)]
-#[diesel(table_name = schema::sensor_data)]
-#[diesel(check_for_backend(diesel::pg::Pg))]
-pub struct SensorData {
-    #[diesel(sql_type = Int8)]
-    pub id: i64,
-    #[diesel(sql_type = Int4)]
-    pub device_id: i32,
-    #[diesel(sql_type = Timestamp)]
-    pub timestamp: NaiveDateTime,
-    #[diesel(sql_type = Varchar)]
+#[derive(Debug, Insertable, Deserialize, Serialize)]
+#[diesel(table_name = schema::devices)]
+pub struct NewDevice {
+    pub workspace_id: uuid::Uuid,
+    pub name: String,
     pub type_: String,
-    #[diesel(sql_type = Float8)]
-    pub value: f64,
-    #[diesel(sql_type = Varchar)]
-    pub unit: String,
-    #[diesel(sql_type = Nullable<Timestamp>)]
-    pub created_at: Option<NaiveDateTime>,
+    pub status: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, Selectable, Queryable)]
+#[diesel(table_name = schema::device_metrics)]
+#[diesel(check_for_backend(diesel::pg::Pg))]
+pub struct DeviceMetric {
+    id: uuid::Uuid,
+    workspace_id: uuid::Uuid,
+    device_id: uuid::Uuid,
+    metric_name: String,
+    #[diesel(sql_type = Numeric)]
+    metric_value: BigDecimal,
+    unit: Option<String>,
+    timestamp: Option<NaiveDateTime>,
+    created_at: Option<NaiveDateTime>,
+}
+
+#[derive(Debug, Insertable, Deserialize, Serialize)]
+#[diesel(table_name = schema::device_metrics)]
+pub struct NewDeviceMetric {
+    pub workspace_id: uuid::Uuid,
+    pub device_id: uuid::Uuid,
+    pub metric_name: String,
+    pub metric_value: BigDecimal,
 }
 
 #[derive(Debug, Serialize, Deserialize, QueryableByName)]
@@ -70,5 +81,5 @@ pub struct SensorDeviceResult {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct SensorValue {
     pub sensor_type: String,
-    pub value: f64
+    pub value: f64,
 }
