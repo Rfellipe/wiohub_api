@@ -23,13 +23,14 @@ pub async fn handler(client: &MqttClient, pool: PgPool) {
 
             let parsed_payload: DeviceInfo = serde_json::from_str(&payload).unwrap();
             let new_device = NewDevice {
-                name: format!("device-{}", parsed_payload.mac),
-                type_: String::from("type"),
+                serial_number: parsed_payload.uuid,
                 status: String::from("Active"),
-                workspace_id: uuid::Uuid::new_v4(),
+                name: format!("dev-{}", parsed_payload.mac),
+                firmware: parsed_payload.firmware.version,
+                organization_id: parsed_payload.tenant_id
             };
 
-            let add_device = db.add_device(parsed_payload.uuid, new_device);
+            let add_device = db.add_device(new_device);
 
             match add_device {
                 Ok(dev) => {

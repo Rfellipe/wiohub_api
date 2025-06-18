@@ -1,6 +1,6 @@
 mod config;
 mod handlers;
-pub mod models;
+mod models;
 mod mqtt_client;
 
 use super::mqtt::{config::Configs, mqtt_client::MqttClient};
@@ -29,7 +29,7 @@ pub async fn start_mqtt(pool: PgPool) -> JoinHandle<()> {
         log::info!("Mqtt started...");
 
         handlers::device_registration::handler(&mqtt, pool.clone()).await;
-        // handlers::device_entry_data::handler(&mqtt, Arc::clone(&conn_ptr)).await;
+        handlers::device_entry_data::handler(&mqtt, pool.clone()).await;
     });
 
     task

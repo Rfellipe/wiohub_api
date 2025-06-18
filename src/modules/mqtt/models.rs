@@ -1,10 +1,5 @@
+use crate::shared::db::models::MinMaxValues;
 use serde::{Deserialize, Serialize};
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct MinMaxValues {
-    pub timestamp: i64,
-    pub value: f32
-}
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Sensors {
@@ -14,7 +9,7 @@ pub struct Sensors {
     pub min: Option<MinMaxValues>,
     pub max: Option<MinMaxValues>,
     pub average: Option<f32>,
-    pub values: Option<Vec<MinMaxValues>>
+    pub values: Option<Vec<MinMaxValues>>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -22,7 +17,7 @@ pub struct DeviceMessage {
     #[serde(rename = "deviceId")]
     pub device_id: uuid::Uuid,
     pub timestamp: i64,
-    pub sensors: Vec<Sensors>
+    pub sensors: Vec<Sensors>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -33,8 +28,8 @@ pub struct Version {
 #[derive(Debug, Serialize, Deserialize)]
 pub struct DeviceInfo {
     #[serde(rename = "tenantId")]
-    pub tenant_id: String,
-    pub uuid: uuid::Uuid,
+    pub tenant_id: uuid::Uuid,
+    pub uuid: String,
     pub mac: String,
     pub version: String,
     pub software: Option<String>,

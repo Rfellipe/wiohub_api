@@ -35,6 +35,7 @@ pub struct MqttClient {
     server_status_timeout: i64,
 }
 
+#[allow(unused)]
 impl MqttClient {
     pub async fn new(config: MqttConfig, server_status: Arc<RwLock<Option<i64>>>) -> Self {
         // client id is a tenant id

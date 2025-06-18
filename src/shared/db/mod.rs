@@ -2,14 +2,10 @@ pub mod jsonb_wrapper;
 pub mod models;
 pub mod schema;
 
-use crate::{
-    modules::mqtt::models::DeviceMessage,
-    shared::{
-        db::models::{Device, DeviceMetric, NewDevice, NewDeviceMetric},
-        errors::{AppError, ErrorType},
-    },
+use crate::shared::{
+    db::models::{Device, NewDevice, NewSensorData, SensorData},
+    errors::{AppError, ErrorType},
 };
-use bigdecimal::{BigDecimal, FromPrimitive};
 use chrono::NaiveDateTime;
 use diesel::{
     pg::PgConnection,
@@ -82,78 +78,29 @@ impl DBAccessManager {
         Ok(sensors_data)
     }
 
-    pub fn get_device(
-        &mut self,
-        device_serial: uuid::Uuid,
-    ) -> Result<Option<Device>, Box<dyn std::error::Error + Send + Sync>> {
-        use schema::devices::dsl::{devices, id};
-
-        let device = devices
-            .filter(id.eq(&device_serial))
-            .first::<Device>(&mut self.connection)
-            .optional()?;
-
-        Ok(device)
-    }
-
     pub fn add_device(
         &mut self,
-        device_serial: uuid::Uuid,
         new_device: NewDevice,
     ) -> Result<Device, Box<dyn std::error::Error + Send + Sync>> {
         use schema::devices::dsl::devices;
 
-        let existing_device = self.get_device(device_serial)?;
-
-        match existing_device {
-            Some(device) => {
-                log::info!(
-                    "Device alredy exists: id: {} - name: {}",
-                    device.id,
-                    device.name
-                );
-                Err("Device alredy exists".into())
-            }
-            None => {
-                log::info!("New Device registration: {}", new_device.name);
-                let dev = diesel::insert_into(devices)
-                    .values(&new_device)
-                    .get_result::<Device>(&mut self.connection)?;
-                Ok(dev)
-            }
-        }
+        let dev = diesel::insert_into(devices)
+            .values(&new_device)
+            .get_result::<Device>(&mut self.connection)?;
+        Ok(dev)
     }
 
     pub fn save_device_data(
         &mut self,
-        message: DeviceMessage,
+        new_datas: Vec<NewSensorData>,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-        use schema::device_metrics::dsl::device_metrics;
+        use schema::sensor_data::dsl::sensor_data;
 
-        let device = self.get_device(message.device_id)?;
-        match device {
-            Some(dev) => {
-                let mut new_metrics: Vec<NewDeviceMetric> = vec![];
+        let _datas = diesel::insert_into(sensor_data)
+            .values(&new_datas)
+            .get_results::<SensorData>(&mut self.connection)?;
 
-                for sensor in message.sensors {
-                    let new_metric = NewDeviceMetric {
-                        workspace_id: dev.workspace_id,
-                        device_id: dev.id,
-                        metric_name: sensor._type,
-                        metric_value: BigDecimal::from_f32(sensor.average.unwrap()).unwrap(),
-                    };
-
-                    new_metrics.push(new_metric);
-                }
-
-                let _metrics = diesel::insert_into(device_metrics)
-                    .values(&new_metrics)
-                    .get_results::<DeviceMetric>(&mut self.connection)?;
-
-                Ok(())
-            }
-            None => Err("No device found".into()),
-        }
+        Ok(())
     }
 }
 
@@ -179,3 +126,17 @@ pub fn get_db_access_manager(pool: PgPool) -> Result<DBAccessManager, AppError> 
         }
     }
 }
+
+// pub fn get_device(
+//     &mut self,
+//     device_serial: uuid::Uuid,
+// ) -> Result<Option<Device>, Box<dyn std::error::Error + Send + Sync>> {
+//     use schema::devices::dsl::{devices, id};
+//
+//     let device = devices
+//         .filter(id.eq(&device_serial))
+//         .first::<Device>(&mut self.connection)
+//         .optional()?;
+//
+//     Ok(device)
+// }

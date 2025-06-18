@@ -1,93 +1,106 @@
 // @generated automatically by Diesel CLI.
 
 diesel::table! {
-    activity_log (id) {
-        id -> Uuid,
-        workspace_id -> Uuid,
-        user_id -> Nullable<Uuid>,
-        device_id -> Nullable<Uuid>,
-        action -> Text,
-        details -> Nullable<Jsonb>,
-        created_at -> Nullable<Timestamptz>,
+    connection_protocols (id) {
+        id -> Int4,
+        name -> Text,
     }
 }
 
 diesel::table! {
-    alerts (id) {
-        id -> Uuid,
-        workspace_id -> Uuid,
-        device_id -> Nullable<Uuid>,
-        issue -> Text,
-        priority -> Text,
-        status -> Text,
-        created_at -> Nullable<Timestamptz>,
-        resolved_at -> Nullable<Timestamptz>,
+    device_categories (id) {
+        id -> Int4,
+        name -> Text,
     }
 }
 
 diesel::table! {
-    device_metrics (id) {
-        id -> Uuid,
-        workspace_id -> Uuid,
-        device_id -> Uuid,
-        metric_name -> Text,
-        metric_value -> Numeric,
-        unit -> Nullable<Text>,
-        timestamp -> Nullable<Timestamptz>,
-        created_at -> Nullable<Timestamptz>,
+    device_manufacturers (id) {
+        id -> Int4,
+        name -> Text,
+    }
+}
+
+diesel::table! {
+    device_status (id) {
+        id -> Int4,
+        name -> Text,
     }
 }
 
 diesel::table! {
     devices (id) {
         id -> Uuid,
-        workspace_id -> Uuid,
-        name -> Text,
-        #[sql_name = "type"]
-        type_ -> Text,
-        status -> Text,
-        location -> Nullable<Text>,
+        location_id -> Nullable<Uuid>,
+        device_type -> Text,
+        serial_number -> Nullable<Text>,
+        status -> Nullable<Text>,
         last_seen_at -> Nullable<Timestamptz>,
         created_at -> Nullable<Timestamptz>,
-        location_id -> Nullable<Uuid>,
-    }
-}
-
-diesel::table! {
-    energy_data (id) {
-        id -> Uuid,
-        workspace_id -> Uuid,
-        device_id -> Nullable<Uuid>,
-        consumption_kwh -> Numeric,
-        generation_kwh -> Nullable<Numeric>,
-        timestamp -> Timestamptz,
+        name -> Nullable<Text>,
+        description -> Nullable<Text>,
+        manufacturer -> Nullable<Text>,
+        model -> Nullable<Text>,
+        category -> Nullable<Text>,
+        connection_protocol -> Nullable<Text>,
+        credentials -> Nullable<Jsonb>,
+        mqtt_config -> Nullable<Jsonb>,
+        http_config -> Nullable<Jsonb>,
+        ftp_config -> Nullable<Jsonb>,
+        tcp_config -> Nullable<Jsonb>,
+        modbus_config -> Nullable<Jsonb>,
+        opcua_config -> Nullable<Jsonb>,
+        lorawan_config -> Nullable<Jsonb>,
+        firmware -> Nullable<Text>,
+        hardware_serial -> Nullable<Text>,
+        api_serial -> Nullable<Text>,
+        tags -> Nullable<Array<Nullable<Text>>>,
+        data_format -> Nullable<Text>,
+        sample_rate -> Nullable<Int4>,
+        battery_powered -> Nullable<Bool>,
+        battery_level -> Nullable<Float4>,
+        installation_date -> Nullable<Date>,
+        last_maintenance -> Nullable<Date>,
+        next_maintenance -> Nullable<Date>,
+        notes -> Nullable<Text>,
+        responsible_person -> Nullable<Text>,
+        custom_fields -> Nullable<Jsonb>,
+        organization_id -> Nullable<Uuid>,
+        workspace_id -> Nullable<Uuid>,
+        updated_at -> Nullable<Timestamptz>,
+        manufacturer_id -> Nullable<Int4>,
+        category_id -> Nullable<Int4>,
+        status_id -> Nullable<Int4>,
+        protocol_id -> Nullable<Int4>,
     }
 }
 
 diesel::table! {
     locations (id) {
         id -> Uuid,
-        user_id -> Uuid,
+        workspace_id -> Nullable<Uuid>,
         name -> Text,
-        address -> Nullable<Text>,
-        latitude -> Nullable<Numeric>,
-        longitude -> Nullable<Numeric>,
+        latitude -> Nullable<Float8>,
+        longitude -> Nullable<Float8>,
+        description -> Nullable<Text>,
         created_at -> Nullable<Timestamptz>,
+        address -> Nullable<Text>,
+        last_updated_at -> Nullable<Timestamptz>,
+        image -> Nullable<Text>,
+        #[sql_name = "type"]
+        type_ -> Nullable<Text>,
+        status -> Nullable<Text>,
+        perimeter -> Nullable<Jsonb>,
     }
 }
 
 diesel::table! {
-    maintenance_tasks (id) {
+    organization_users (id) {
         id -> Uuid,
-        device_id -> Text,
-        location_id -> Text,
-        responsible_user_id -> Text,
-        description -> Text,
-        periodicity -> Text,
-        scheduled_date -> Date,
-        status -> Text,
+        organization_id -> Nullable<Uuid>,
+        user_id -> Nullable<Uuid>,
+        role -> Text,
         created_at -> Nullable<Timestamptz>,
-        updated_at -> Nullable<Timestamptz>,
     }
 }
 
@@ -95,68 +108,81 @@ diesel::table! {
     organizations (id) {
         id -> Uuid,
         name -> Text,
-        created_by -> Nullable<Uuid>,
         created_at -> Nullable<Timestamptz>,
     }
 }
 
 diesel::table! {
-    profiles (id) {
+    sensor_data (id) {
         id -> Uuid,
-        first_name -> Nullable<Text>,
-        last_name -> Nullable<Text>,
-        address -> Nullable<Text>,
-        bio -> Nullable<Text>,
-        avatar_url -> Nullable<Text>,
-        updated_at -> Nullable<Timestamptz>,
-        organization_id -> Nullable<Uuid>,
-        current_workspace_id -> Nullable<Uuid>,
+        device_id -> Uuid,
+        timestamp -> Timestamptz,
+        #[sql_name = "type"]
+        type_ -> Varchar,
+        min -> Jsonb,
+        max -> Jsonb,
+        average -> Numeric,
+        values -> Jsonb,
+        unit -> Varchar,
+        created_at -> Nullable<Timestamptz>,
     }
 }
 
 diesel::table! {
-    user_organizations (user_id, organization_id) {
-        user_id -> Uuid,
-        organization_id -> Uuid,
+    users (id) {
+        id -> Uuid,
+        full_name -> Nullable<Text>,
+        email -> Nullable<Text>,
+        created_at -> Nullable<Timestamptz>,
+        current_workspace_id -> Nullable<Uuid>,
+        default_organization_id -> Nullable<Uuid>,
+        organization_id -> Nullable<Uuid>,
+    }
+}
+
+diesel::table! {
+    workspace_users (id) {
+        id -> Uuid,
+        workspace_id -> Nullable<Uuid>,
+        user_id -> Nullable<Uuid>,
         role -> Text,
-        joined_at -> Nullable<Timestamptz>,
+        created_at -> Nullable<Timestamptz>,
     }
 }
 
 diesel::table! {
     workspaces (id) {
         id -> Uuid,
-        organization_id -> Uuid,
+        organization_id -> Nullable<Uuid>,
         name -> Text,
+        description -> Nullable<Text>,
         created_at -> Nullable<Timestamptz>,
     }
 }
 
-diesel::joinable!(activity_log -> devices (device_id));
-diesel::joinable!(activity_log -> workspaces (workspace_id));
-diesel::joinable!(alerts -> devices (device_id));
-diesel::joinable!(alerts -> workspaces (workspace_id));
-diesel::joinable!(device_metrics -> devices (device_id));
-diesel::joinable!(device_metrics -> workspaces (workspace_id));
+diesel::joinable!(devices -> connection_protocols (protocol_id));
+diesel::joinable!(devices -> device_categories (category_id));
+diesel::joinable!(devices -> device_manufacturers (manufacturer_id));
+diesel::joinable!(devices -> device_status (status_id));
 diesel::joinable!(devices -> locations (location_id));
+diesel::joinable!(devices -> organizations (organization_id));
 diesel::joinable!(devices -> workspaces (workspace_id));
-diesel::joinable!(energy_data -> devices (device_id));
-diesel::joinable!(energy_data -> workspaces (workspace_id));
-diesel::joinable!(profiles -> organizations (organization_id));
-diesel::joinable!(profiles -> workspaces (current_workspace_id));
-diesel::joinable!(user_organizations -> organizations (organization_id));
-diesel::joinable!(workspaces -> organizations (organization_id));
+diesel::joinable!(locations -> workspaces (workspace_id));
+diesel::joinable!(organization_users -> users (user_id));
+diesel::joinable!(sensor_data -> devices (device_id));
+diesel::joinable!(users -> workspaces (current_workspace_id));
 
 diesel::allow_tables_to_appear_in_same_query!(
-    activity_log,
-    alerts,
-    device_metrics,
+    connection_protocols,
+    device_categories,
+    device_manufacturers,
+    device_status,
     devices,
-    energy_data,
     locations,
-    maintenance_tasks,
+    organization_users,
     organizations,
-    profiles,
-    user_organizations,
+    sensor_data,
+    users,
+    workspace_users,
     workspaces,
 );

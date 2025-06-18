@@ -24,7 +24,7 @@ tokio-util = "0.7.15"
 async-stream = "0.3.6"
 dotenvy = "0.15"
 once_cell = "1.21.3"
-diesel = { version = "2.2.9", features = ["postgres", "chrono", "serde_json", "r2d2", "numeric", "uuid"] }
+diesel = { version = "2.2.9", features = ["postgres", "chrono", "serde_json", "r2d2", "numeric", "uuid", "64-column-tables"] }
 reqwest = { version = "0.12.15", features = ["json"] }
 utoipa = { version = "^5", features = ["uuid", "chrono"] }
 utoipa-swagger-ui = { version = "^9", features = ["debug-embed", "reqwest", "actix-web"] }
